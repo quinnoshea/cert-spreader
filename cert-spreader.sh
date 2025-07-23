@@ -289,7 +289,7 @@ generate_service_certificates() {
     
     # Generate Plex PKCS12 certificate
     if [[ "${PLEX_CERT_ENABLED:-false}" == true ]]; then
-        local plex_password="${PLEX_CERT_PASSWORD:-Password1!}"
+        local plex_password="${PLEX_CERT_PASSWORD:-PASSWORD}"
         log "Generating Plex PKCS12 certificate"
         
         if [[ "$DRY_RUN" == true ]]; then
