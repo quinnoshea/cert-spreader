@@ -1,229 +1,311 @@
 # Certificate Spreader
 
-A Python application for securely deploying SSL certificates to multiple hosts and services, including Proxmox nodes. This replaces shell scripts with a more maintainable and secure solution.
+A simplified bash script for securely deploying Let's Encrypt SSL certificates to multiple hosts and services. This tool replaces complex shell scripts with a maintainable, configurable solution.
 
 ## 🔒 Security Features
 
-- **Secret Management**: Keeps sensitive data (tokens, passwords) out of git
-- **Environment Variables**: Override config values with environment variables
-- **Template-based Config**: Provides safe templates for sharing configuration structure
+- **Configuration-based**: Keeps sensitive data separate from code
+- **SSH Key Authentication**: Uses SSH keys for secure, passwordless deployment
+- **Idempotency**: Only deploys when certificates have actually changed
 - **Comprehensive .gitignore**: Prevents accidental commit of sensitive files
 
 ## 📋 Prerequisites
 
-- Python 3.6 or higher
-- Required Python packages: `pyyaml`, `requests`
-- SSH access to target hosts
+- Bash 4.0 or higher
+- SSH access to target hosts with key-based authentication
 - Valid SSL certificates (Let's Encrypt recommended)
+- Standard Unix tools: `rsync`, `ssh`, `openssl`, `curl`, `sha256sum`
 
 ## 🚀 Quick Setup
 
-### 1. Install Dependencies
+### 1. Configure the Application
 
 ```bash
-# Install required Python packages
-pip3 install pyyaml requests
+# Copy the example configuration
+cp config.example.conf config.conf
+
+# Edit config.conf with your actual values
+# WARNING: config.conf is ignored by git - it won't be committed
+nano config.conf
 ```
 
-### 2. Configure the Application
+### 2. Set Up SSH Access
 
 ```bash
-# Copy the template to create your config
-cp config.template.yml config.yml
+# Generate SSH key if needed (do this once)
+ssh-keygen -t ed25519 -f /root/.ssh/cert_spreader_key
 
-# Edit config.yml with your actual values
-# WARNING: config.yml is ignored by git - it won't be committed
-nano config.yml
+# Copy SSH key to each host (replace 'hostname' with actual host)
+ssh-copy-id -i /root/.ssh/cert_spreader_key root@hostname.yourdomain.com
 ```
 
-### 3. Set Up Secrets
+### 3. Test the Configuration
 
 ```bash
-# Copy the example secrets file
-cp secrets.env.example secrets.env
+# Make script executable
+chmod +x cert-spreader.sh
 
-# Edit with your actual secrets
-nano secrets.env
-
-# Secure the secrets file
-chmod 600 secrets.env
-
-# Make the wrapper script executable
-chmod +x run-cert-spreader.sh
-```
-
-### 4. Test the Configuration
-
-```bash
-# RECOMMENDED: Use the wrapper script (handles secrets automatically)
-./run-cert-spreader.sh --dry-run
-
-# Verbose dry run for detailed output
-./run-cert-spreader.sh --dry-run --verbose
+# ALWAYS test first with dry-run
+./cert-spreader.sh --dry-run
 ```
 
 ## 🔧 Usage
 
 ### Basic Commands
 
-#### Using the Wrapper Script (Recommended)
-
 ```bash
 # Normal deployment (deploy certs + restart services + update Proxmox)
-./run-cert-spreader.sh
+./cert-spreader.sh
 
 # Dry run (see what would happen without making changes)  
-./run-cert-spreader.sh --dry-run
+./cert-spreader.sh --dry-run
 
 # Deploy certificates only (skip service restarts)
-./run-cert-spreader.sh --deploy-only
+./cert-spreader.sh --cert-only
 
 # Restart services only (skip certificate deployment)
-./run-cert-spreader.sh --services-only
+./cert-spreader.sh --services-only
 
-# Enable verbose logging
-./run-cert-spreader.sh --verbose
+# Update Proxmox certificates only (skip everything else)
+./cert-spreader.sh --proxmox-only
 
-# Use custom config file
-./run-cert-spreader.sh --config /path/to/other-config.yml
+# Fix certificate file permissions only (skip everything else)
+./cert-spreader.sh --permissions-fix
+
+# Use custom configuration file
+./cert-spreader.sh custom.conf --dry-run
 
 # Get help
-./run-cert-spreader.sh --help
+./cert-spreader.sh --help
 ```
 
-#### Direct Python Execution (Alternative)
+### Execution Modes
 
-```bash
-# If you prefer to manage environment variables manually
-source secrets.env
-python3 cert-spreader.py --dry-run
-unset CERT_SPREADER_PROXMOX_TOKEN  # Manual cleanup
-```
+The script supports several execution modes for different scenarios:
+
+- **Default mode**: Deploys certificates to hosts, restarts services, and updates Proxmox
+- **`--cert-only`**: Only deploys certificates to hosts, skips service restarts and Proxmox updates
+- **`--services-only`**: Only restarts services on hosts, skips certificate deployment and Proxmox updates  
+- **`--proxmox-only`**: Only updates Proxmox certificates, skips everything else
+- **`--permissions-fix`**: Only fixes certificate file permissions, skips everything else
+- **`--dry-run`**: Can be combined with any mode to show what would happen without making changes
+
+**Note**: The selective execution flags (`--cert-only`, `--services-only`, `--proxmox-only`, `--permissions-fix`) are mutually exclusive.
+
+**Common use cases:**
+- `--proxmox-only`: When you only need to update Proxmox after manual certificate changes, or if host deployments failed but Proxmox is still reachable
+- `--cert-only`: When testing certificate deployment without affecting running services
+- `--services-only`: When certificates are already deployed but services need to be restarted
+- `--permissions-fix`: When certificate permissions have been changed manually or after system maintenance, ensuring proper Let's Encrypt security standards
 
 ### Typical Workflow
 
 1. **Test first**: Always run with `--dry-run` to verify configuration
-2. **Deploy certificates**: Run without flags for full deployment
+2. **Deploy certificates**: Run without flags for full deployment  
 3. **Monitor logs**: Check `/var/log/cert-spreader.log` for detailed results
 
-## 📁 File Structure
+### Let's Encrypt Integration
+
+Add as a post-renewal hook in your certbot configuration:
+
+```bash
+# Add to /etc/letsencrypt/renewal/yourdomain.com.conf
+post_hook = /path/to/cert-spreader.sh
+
+# Or run manually after renewal
+certbot renew && /path/to/cert-spreader.sh
+```
+
+## 📁 Repository Structure
 
 ```
 cert-spreader/
-├── cert-spreader.py        # Main Python application
-├── run-cert-spreader.sh    # Wrapper script with automatic secret management
-├── config.yml              # Your actual config (NOT in git)
-├── config.template.yml     # Template for config (safe to commit)
-├── secrets.env             # Your actual secrets (NOT in git)  
-├── secrets.env.example     # Template for secrets (safe to commit)
-├── .gitignore              # Protects sensitive files
-└── README.md               # This file
+├── cert-spreader.sh           # Main deployment script
+├── config.conf                # Your actual config (NOT in git)
+├── config.example.conf        # Configuration template (safe to commit)
+├── python/                    # Previous Python implementation
+│   ├── cert-spreader.py
+│   ├── config.yml
+│   └── ...
+├── originals/                 # Original shell scripts (NOT in git)
+│   ├── cert-deploy.sh
+│   └── plex-cert.sh
+├── .gitignore                 # Protects sensitive files  
+└── README.md                  # This file
 ```
 
 ## ⚙️ Configuration
 
-### Host Configuration Example
+### Basic Configuration (config.conf)
 
-```yaml
-hosts:
-  web-server:
-    port: 22                    # SSH port (optional, defaults to 22)
-    services:
-      - name: "nginx"
-        action: "reload"        # or "restart"
-      - name: "apache2" 
-        action: "restart"
-    post_deploy_commands:       # Optional commands after cert deployment
-      - "chown www-data:www-data /path/to/cert"
-      
-  special-server:
-    port: 2222                  # Custom SSH port
-    services:
-      - name: "custom-service"
-        action: "reload"
+```bash
+# Basic settings
+DOMAIN="yourdomain.com"
+CERT_DIR="/etc/letsencrypt/live/yourdomain.com"
+BACKUP_HOST="backup-server"
+
+# SSH settings
+SSH_OPTS="-o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new"
+
+# Host list (space-separated)
+HOSTS="web-server mail-server app-server"
+
+# Host-specific services
+declare -a HOST_SERVICES=(
+    "web-server:22:nginx,apache2"
+    "mail-server:22:postfix,dovecot"
+    "app-server:2222:myapp"
+)
+
+# Proxmox nodes (optional)
+PROXMOX_USER="user@pve!tokenid"
+PROXMOX_TOKEN="your-api-token"
+declare -a PROXMOX_NODES=(
+    "proxmox01"
+    "proxmox02"
+)
 ```
 
-### Environment Variables
+### Host Services Format
 
-All sensitive values can be overridden with environment variables:
+The `HOST_SERVICES` array uses the format: `"hostname:port:service1,service2"`
 
-| Environment Variable | Description |
-|---------------------|-------------|
-| `CERT_SPREADER_PROXMOX_USER` | Proxmox API user (format: `user@pve!tokenname`) |
-| `CERT_SPREADER_PROXMOX_TOKEN` | Proxmox API token |
-| `CERT_SPREADER_PLEX_PASSWORD` | Password for Plex PKCS12 certificate |
-| `CERT_SPREADER_DOMAIN` | Your domain name |
-| `CERT_SPREADER_USERNAME` | Username for file ownership |
-| `CERT_SPREADER_CERT_DIR` | Certificate directory path |
+- **hostname**: Must match entries in `HOSTS`
+- **port**: SSH port (22 is default)
+- **services**: Comma-separated list of systemd services to reload
+
+### Service Certificate Generation
+
+The script can generate specialized certificate formats:
+
+```bash
+# Enable Plex PKCS12 certificate
+PLEX_CERT_ENABLED=true
+PLEX_CERT_PASSWORD="your-password"
+
+# Enable ZNC certificate bundle
+ZNC_CERT_ENABLED=true
+ZNC_DHPARAM_FILE="/etc/nginx/ssl/dhparam.pem"
+```
+
+### Certificate Permissions Security
+
+The script automatically secures certificate permissions following Let's Encrypt best practices:
+
+**Directory Permissions:**
+- Certificate directory: `755` (drwxr-xr-x, root:root)
+
+**File Permissions:**
+- Private keys (`privkey.pem`): `600` (-rw-------, root:root)
+- Certificates (`cert.pem`, `fullchain.pem`, `chain.pem`): `644` (-rw-r--r--, root:root)
+- Plex certificate (`plex-certificate.pfx`): `644` (-rw-r--r--, root:root) 
+- ZNC certificate (`znc.pem`): `600` (-rw-------, root:root)
+
+**Idempotency:** The script only changes permissions when needed, logging "permissions OK" when they're already correct.
+
+**Manual fix:** Use `./cert-spreader.sh --permissions-fix` to fix permissions without doing anything else.
 
 ## 🔒 Security Best Practices
 
-### For Git Repositories
+### SSH Key Management
 
-1. **Never commit real secrets**: The `.gitignore` file protects you, but double-check
-2. **Use templates**: Share `config.template.yml`, not `config.yml`
-3. **Environment variables**: Preferred method for sensitive values
-4. **Review before pushing**: Always check `git status` before committing
-
-### For Production
-
-1. **Restrict file permissions**: 
+1. **Use dedicated keys**: Create separate SSH keys for certificate deployment
+2. **Restrict key access**: 
    ```bash
-   chmod 600 config.yml secrets.env
-   chown root:root config.yml secrets.env
+   chmod 600 /root/.ssh/cert_spreader_key
+   chown root:root /root/.ssh/cert_spreader_key
+   ```
+3. **Limit key usage**: Consider using SSH key restrictions where possible
+
+### Configuration Security
+
+1. **Protect config file**:
+   ```bash
+   chmod 600 config.conf
+   chown root:root config.conf
    ```
 
-2. **Use dedicated SSH keys**: Create separate SSH keys for certificate deployment
+2. **Review before commits**: Always check `git status` before pushing
 
-3. **Monitor logs**: Set up log monitoring for deployment failures
-
-4. **Test regularly**: Use `--dry-run` to validate configuration changes
+3. **Use the example file**: Share `config.example.conf`, never `config.conf`
 
 ## 🚨 What Gets Ignored by Git
 
 The `.gitignore` file prevents these sensitive files from being committed:
 
-- `config.yml` (your real config)
-- `secrets.env` (your real secrets)
-- `*.pem`, `*.pfx`, `*.key` (certificate files)
-- `*.log` (log files)
-- Various backup and temporary files
+- `config.conf` (your real configuration)
+- `originals/` (original scripts with secrets)
+- `python/config.yml` (Python version config)
+- Certificate files (`*.pem`, `*.pfx`, `*.key`)
+- Log files (`*.log`)
+- Backup and temporary files
 
 ## 🔧 Troubleshooting
 
 ### Common Issues
 
-1. **Permission Denied**: Ensure SSH keys and file permissions are correct
-2. **Module Not Found**: Install required packages with `pip3 install pyyaml requests`
-3. **Connection Timeout**: Check SSH connectivity and firewall rules
-4. **Proxmox API Errors**: Verify token permissions and API user privileges
+1. **Permission Denied**: 
+   - Check SSH key permissions and SSH agent
+   - Verify SSH key is copied to target hosts
+   - Test manual SSH connection: `ssh -i /root/.ssh/cert_spreader_key root@host.domain.com`
 
-### Debug Mode
+2. **Certificate unchanged, skipping**: 
+   - This is normal behavior (idempotency)
+   - Use `--dry-run` to see what would happen
+   - Check certificate hashes match between local and remote
+
+3. **Service restart failures**:
+   - Verify service names in configuration
+   - Check if services support `reload` vs need `restart`
+   - Test manually: `ssh host 'systemctl reload nginx'`
+
+4. **Proxmox API errors**:
+   - Verify API token permissions in Proxmox
+   - Check token format: `user@realm!tokenname`
+   - Test connectivity: `curl -k https://proxmox.domain.com:8006`
+
+### Debug Commands
 
 ```bash
-# Enable maximum verbosity
-python3 cert-spreader.py --verbose --dry-run
+# Test SSH connectivity
+ssh -i /root/.ssh/cert_spreader_key root@hostname.domain.com 'echo "Connection OK"'
 
 # Check certificate validity
-openssl x509 -in /etc/letsencrypt/live/your-domain/cert.pem -text -noout
+openssl x509 -in /etc/letsencrypt/live/domain/cert.pem -text -noout | grep -A2 Validity
+
+# Verify certificate hash
+sha256sum /etc/letsencrypt/live/domain/fullchain.pem
+
+# Test service reload
+ssh hostname.domain.com 'systemctl reload nginx'
 ```
 
-## 📝 Migration from Shell Scripts
+## 📝 Migration from Complex Scripts
 
-If you're migrating from `plex-cert.sh` or similar scripts:
+If you're migrating from the previous Python version or complex shell scripts:
 
-1. **Map your hosts**: Copy host definitions from your shell script arrays
-2. **Preserve service actions**: Note which services use `reload` vs `restart` 
-3. **Keep working curl commands**: Proxmox curl commands are preserved exactly
-4. **Test thoroughly**: Use `--dry-run` to verify behavior before going live
+1. **Extract host lists**: Copy your host definitions to `HOSTS` variable
+2. **Map services**: Convert service configurations to `HOST_SERVICES` format  
+3. **Preserve working commands**: SSH and curl commands work the same way
+4. **Test thoroughly**: Use `--dry-run` extensively during migration
+5. **Simplify gradually**: Start with basic functionality, add features as needed
+
+## 🎯 Design Philosophy
+
+This script follows the principle of **simplicity over complexity**:
+
+- **Linear execution**: Easy to understand and debug
+- **Minimal dependencies**: Uses standard Unix tools
+- **Clear logging**: Simple, readable log messages
+- **Fail-fast**: Stops on errors rather than continuing with undefined state
+- **Idempotent**: Safe to run multiple times
 
 ## 🤝 Contributing
 
-This is a private repository, but you can:
-
 1. **Report issues**: Document any problems you encounter
-2. **Suggest improvements**: Ideas for better security or functionality
-3. **Share templates**: Contribute configuration templates for common setups
+2. **Suggest improvements**: Ideas for better security or functionality  
+3. **Test thoroughly**: Always use `--dry-run` when testing changes
+4. **Keep it simple**: Resist the urge to add complexity
 
 ## 📄 License
 
@@ -231,4 +313,6 @@ Private repository - internal use only.
 
 ---
 
-**⚠️ Security Reminder**: Never commit real tokens, passwords, or private keys to any repository, even private ones!
+**⚠️ Security Reminder**: Never commit real hostnames, tokens, or private keys to any repository, even private ones!
+
+**💡 Pro Tip**: Always run `./cert-spreader.sh --dry-run` first to see what the script will do before making actual changes.

@@ -4,10 +4,13 @@
 # === ORIGINAL SHELL SCRIPTS (contain real secrets) ===
 cert-deploy.sh               # Original deployment script with secrets
 plex-cert.sh                # Original Plex script with secrets
+originals/                  # Entire originals folder with sensitive scripts
 notes.txt                   # Development notes that may contain sensitive info
 
 # === SECRET FILES - NEVER COMMIT ===
 config.yml                  # Main config with real secrets
+config.conf                 # New configuration file format
+python/config.yml           # Python version config with secrets
 secrets.env                 # Environment variables file
 .env                        # Alternative environment file name
 secrets.yml                 # Alternative secrets file
@@ -66,3 +69,9 @@ id_*                        # SSH keys
 *.pub                       # SSH public keys (except when explicitly needed)
 known_hosts                 # SSH known hosts
 authorized_keys             # SSH authorized keys
+# Force ignore sensitive files
+config.conf
+notes.txt
+secrets.env
+originals/
+python/config.yml
