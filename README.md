@@ -205,6 +205,52 @@ The script automatically secures certificate permissions following Let's Encrypt
 
 **Manual fix:** Use `./cert-spreader.sh --permissions-fix` to fix permissions without doing anything else.
 
+### Alternative: Environment Variables
+
+While the script currently uses `config.conf`, you can use environment variables as an alternative or supplement for sensitive values:
+
+**Option 1: Hybrid Approach (Recommended)**
+Keep `config.conf` for host lists and complex settings, but override sensitive values:
+
+```bash
+# Set sensitive values via environment
+export PROXMOX_TOKEN="your-real-token"
+export PLEX_CERT_PASSWORD="your-real-password"
+
+# Run script normally
+./cert-spreader.sh
+```
+
+**Option 2: Full Environment Variables**
+Copy and customize the example file:
+
+```bash
+# Create your environment file
+cp secrets.env.example secrets.env
+nano secrets.env
+
+# Modify script to source it (add to beginning of cert-spreader.sh):
+if [[ -f "secrets.env" ]]; then
+    source secrets.env
+fi
+```
+
+**Option 3: Wrapper Script**
+Create a wrapper that loads environment variables:
+
+```bash
+#!/bin/bash
+# cert-spreader-wrapper.sh
+source secrets.env
+./cert-spreader.sh "$@"
+```
+
+**Benefits of Environment Variables:**
+- ✅ Automatically cleared when terminal session ends
+- ✅ Can be set per-server without changing code
+- ✅ Not stored in files that could be accidentally shared
+- ⚠️ May appear in process lists temporarily
+
 ## 🔒 Security Best Practices
 
 ### SSH Key Management
