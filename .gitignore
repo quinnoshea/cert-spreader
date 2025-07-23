@@ -1,0 +1,68 @@
+# === Certificate Spreader .gitignore ===
+# This file tells git which files to never track/upload
+
+# === ORIGINAL SHELL SCRIPTS (contain real secrets) ===
+cert-deploy.sh               # Original deployment script with secrets
+plex-cert.sh                # Original Plex script with secrets
+notes.txt                   # Development notes that may contain sensitive info
+
+# === SECRET FILES - NEVER COMMIT ===
+config.yml                  # Main config with real secrets
+secrets.env                 # Environment variables file
+.env                        # Alternative environment file name
+secrets.yml                 # Alternative secrets file
+production.yml              # Production config
+local.yml                   # Local config
+
+# === CERTIFICATE FILES ===
+*.pem                       # Certificate files
+*.pfx                       # PKCS12 files
+*.crt                       # Certificate files
+*.key                       # Private key files
+*.csr                       # Certificate signing requests
+
+# === LOG FILES ===
+*.log                       # Log files
+logs/                       # Log directory
+
+# === BACKUP FILES ===
+*.backup                    # Backup files
+*.bak                       # Backup files
+*~                          # Editor backup files
+
+# === TEMPORARY FILES ===
+*.tmp                       # Temporary files
+*.temp                      # Temporary files
+.temp/                      # Temporary directory
+temp/                       # Temporary directory
+
+# === PYTHON FILES ===
+__pycache__/                # Python cache
+*.pyc                       # Python compiled files
+*.pyo                       # Python optimized files
+*.pyd                       # Python extension modules
+.Python                     # Python environment
+*.egg-info/                 # Python egg info
+dist/                       # Python distribution
+build/                      # Python build
+.venv/                      # Virtual environment
+venv/                       # Virtual environment
+env/                        # Virtual environment
+
+# === EDITOR FILES ===
+.vscode/                    # VS Code settings
+.idea/                      # PyCharm settings
+*.swp                       # Vim swap files
+*.swo                       # Vim swap files
+.DS_Store                   # macOS files
+Thumbs.db                   # Windows files
+
+# === TEST FILES ===
+test_config.yml             # Test configurations
+test_*.yml                  # Test files
+
+# === SSH KEYS ===
+id_*                        # SSH keys
+*.pub                       # SSH public keys (except when explicitly needed)
+known_hosts                 # SSH known hosts
+authorized_keys             # SSH authorized keys

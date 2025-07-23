@@ -1,0 +1,119 @@
+# Certificate Spreader Configuration Template
+# Copy this file to config.yml and fill in your actual values
+# This template file is safe to commit to git - it contains no secrets
+
+# General settings
+domain: "your-domain.com"                    # Replace with your actual domain
+certificate_dir: "/etc/letsencrypt/live/your-domain.com"  # Path to certificates
+username: "your-username"                    # Your username for file ownership
+
+# Proxmox credentials (FILL THESE IN - DO NOT COMMIT REAL VALUES)
+# You can also use environment variables instead (see README)
+proxmox_user: "user@pve!tokenname"          # Format: user@realm!tokenid
+proxmox_token: "your-proxmox-api-token-here"  # Your actual API token
+
+# Logging configuration
+logging:
+  level: "INFO"                              # DEBUG, INFO, WARNING, ERROR, CRITICAL
+  file: "/var/log/cert-spreader.log"        # Log file path
+  tag: "cert-spreader"                       # Syslog tag
+
+# Backup configuration
+backup:
+  host: "backup-host"                        # Host that stores backups
+  ssl_backup_dir: "/path/to/ssl/backups"     # Directory for SSL cert backups
+  nginx_backup_dir: "/path/to/nginx/backups" # Directory for nginx config backups
+
+# SSH configuration defaults
+ssh:
+  timeout: 10                                # SSH connection timeout
+  key: "/root/.ssh/id_ed25519"              # SSH private key path
+  opts: "-o ConnectTimeout=10 -o ControlMaster=auto -o ControlPersist=5m -o StrictHostKeyChecking=accept-new"
+
+# Certificate generation settings
+certificates:
+  # Plex certificate settings (PKCS12 format)
+  plex:
+    filename: "plex-certificate.pfx"
+    password: "your-plex-cert-password"      # CHANGE THIS PASSWORD
+  # ZNC certificate (concatenated format)
+  znc:
+    filename: "znc.pem"
+    include_dhparam: true
+    dhparam_file: "/etc/nginx/ssl/dhparam.pem"
+
+# Host definitions - CUSTOMIZE FOR YOUR ENVIRONMENT
+hosts:
+  # Example mail and web server
+  mail-server:
+    port: 22                                 # SSH port (22 is default)
+    services:
+      - name: "postfix"
+        action: "reload"                     # reload or restart
+      - name: "dovecot" 
+        action: "reload"
+      - name: "nginx"
+        action: "reload"
+
+  # Example web server
+  web-server:
+    port: 22
+    services:
+      - name: "nginx"
+        action: "reload"
+
+  # Example backup server (also serves as backup host)
+  backup-server:
+    port: 22
+    services:
+      - name: "nginx"
+        action: "reload"
+    post_deploy_commands:                    # Commands to run after certificate deployment
+      - "chown plex:plex /path/to/plex/cert/plex-certificate.pfx"
+
+  # Example media server
+  media-server:
+    port: 22
+    services:
+      - name: "plexmediaserver.service"
+        action: "restart"                    # Plex usually needs restart, not reload
+
+  # Example server with custom SSH port
+  special-server:
+    port: 2222                               # Custom SSH port
+    services:
+      - name: "some-service"
+        action: "reload"
+
+  # Example DNS servers
+  dns-server-1:
+    port: 22
+    services:
+      - name: "dns.service"
+        action: "restart"                    # DNS services usually need restart
+
+  dns-server-2:
+    port: 22
+    services:
+      - name: "dns.service"
+        action: "restart"
+
+# Proxmox configuration
+proxmox:
+  nodes:
+    proxmox-node-1:
+      url: "https://proxmox1.your-domain.com:8006"
+    proxmox-node-2:
+      url: "https://proxmox2.your-domain.com:8006"
+
+# Deployment settings
+deployment:
+  max_parallel: 5                            # Maximum parallel deployments
+  retry_attempts: 3                          # Number of retries for failed operations
+  retry_delay: 2                             # Seconds to wait between retries
+  fragile_hosts: []                          # Hosts to deploy serially (not in parallel)
+  
+# Local services to reload after certificate generation
+local_services:
+  - name: "nginx"
+    action: "reload"
