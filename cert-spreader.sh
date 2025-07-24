@@ -5,7 +5,7 @@ set -euo pipefail
 # Deploy Let's Encrypt certificates to multiple hosts after renewal
 
 # Default configuration file
-CONFIG_FILE="${1:-config.conf}"
+CONFIG_FILE="config.conf"
 
 # Command line flags
 DRY_RUN=false
@@ -13,6 +13,10 @@ CERT_ONLY=false
 SERVICES_ONLY=false
 PROXMOX_ONLY=false
 PERMISSIONS_FIX=false
+
+# Global arrays
+declare -ag HOST_SERVICES=()
+declare -ag PROXMOX_NODES=()
 
 # Usage function
 usage() {
@@ -27,7 +31,7 @@ Options:
     --permissions-fix Only fix certificate file permissions, skip everything else
     --help          Show this help message
 
-If no config file is specified, 'config.conf' will be used.
+If no config file is specified, 'config.conf' will be used
 
 Examples:
     $0                          # Use config.conf, deploy certs and restart services
@@ -105,6 +109,7 @@ load_config() {
         exit 1
     fi
     
+    
     # Source the configuration file
     source "$CONFIG_FILE"
     
@@ -122,6 +127,7 @@ load_config() {
     LOG_FILE="${LOG_FILE:-/var/log/cert-spreader.log}"
     PLEX_CERT_ENABLED="${PLEX_CERT_ENABLED:-false}"
     ZNC_CERT_ENABLED="${ZNC_CERT_ENABLED:-false}"
+    
     CERT_FILE_MODE="${CERT_FILE_MODE:-644}"
     PRIVKEY_FILE_MODE="${PRIVKEY_FILE_MODE:-600}"
 }
