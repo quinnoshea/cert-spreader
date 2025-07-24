@@ -412,7 +412,7 @@ secure_cert_permissions() {
     
     # Check and secure individual certificate files with appropriate permissions
     local cert_files=(
-        "privkey.pem:600"      # Private key - most restrictive
+        "privkey.pem:644"      # Private key - readable by services
         "cert.pem:644"         # Certificate - readable by services
         "fullchain.pem:644"    # Full chain - readable by services  
         "chain.pem:644"        # Intermediate chain - if it exists
