@@ -1,6 +1,8 @@
 #!/bin/bash
 set -euo pipefail
 
+echo "DEBUG: Script started with args: $@"
+
 # Certificate Spreader - Simplified Version with Configuration File
 # Deploy Let's Encrypt certificates to multiple hosts after renewal
 
@@ -47,7 +49,9 @@ EOF
 
 # Parse command line arguments
 parse_args() {
+    echo "DEBUG: In parse_args with $# args: $@"
     while [[ $# -gt 0 ]]; do
+        echo "DEBUG: Processing arg: $1"
         case $1 in
             --dry-run)
                 DRY_RUN=true
@@ -66,6 +70,7 @@ parse_args() {
                 shift
                 ;;
             --permissions-fix)
+                echo "DEBUG: Setting PERMISSIONS_FIX=true"
                 PERMISSIONS_FIX=true
                 shift
                 ;;
@@ -86,19 +91,26 @@ parse_args() {
                 shift
                 ;;
         esac
+        echo "DEBUG: End of case, remaining args: $#"
     done
+    echo "DEBUG: Exited while loop, starting flag validation"
     
     # Validate flag combinations
     local exclusive_flags=0
-    [[ "$CERT_ONLY" == true ]] && ((exclusive_flags++))
-    [[ "$SERVICES_ONLY" == true ]] && ((exclusive_flags++))
-    [[ "$PROXMOX_ONLY" == true ]] && ((exclusive_flags++))
-    [[ "$PERMISSIONS_FIX" == true ]] && ((exclusive_flags++))
+    echo "DEBUG: Checking CERT_ONLY=${CERT_ONLY:-unset}"
+    [[ "$CERT_ONLY" == true ]] && exclusive_flags=$((exclusive_flags + 1))
+    echo "DEBUG: After CERT_ONLY check, exclusive_flags=$exclusive_flags"
+    [[ "$SERVICES_ONLY" == true ]] && exclusive_flags=$((exclusive_flags + 1))
+    [[ "$PROXMOX_ONLY" == true ]] && exclusive_flags=$((exclusive_flags + 1))
+    echo "DEBUG: Checking PERMISSIONS_FIX=${PERMISSIONS_FIX:-unset}"
+    [[ "$PERMISSIONS_FIX" == true ]] && exclusive_flags=$((exclusive_flags + 1))
+    echo "DEBUG: After all checks, exclusive_flags=$exclusive_flags"
     
     if [[ $exclusive_flags -gt 1 ]]; then
         echo "ERROR: Only one of --cert-only, --services-only, --proxmox-only, or --permissions-fix can be used at a time" >&2
         exit 1
     fi
+    echo "DEBUG: parse_args completed successfully"
 }
 
 # Load configuration file
@@ -494,15 +506,19 @@ perform_backups() {
 main() {
     # Parse command line arguments (pass all args to parse function)
     parse_args "$@"
+    echo "DEBUG: After parse_args - PERMISSIONS_FIX=$PERMISSIONS_FIX"
     
     # Load configuration
     load_config
+    echo "DEBUG: After load_config"
     
     log "=== Certificate Spreader Started ==="
     log "Mode: DRY_RUN=$DRY_RUN, CERT_ONLY=$CERT_ONLY, SERVICES_ONLY=$SERVICES_ONLY, PROXMOX_ONLY=$PROXMOX_ONLY, PERMISSIONS_FIX=$PERMISSIONS_FIX"
     
     # Handle permissions-fix only mode
+    echo "DEBUG: Checking PERMISSIONS_FIX: $PERMISSIONS_FIX"
     if [[ "$PERMISSIONS_FIX" == true ]]; then
+        echo "DEBUG: Entering permissions-fix mode"
         log "Running in permissions-fix only mode"
         secure_cert_permissions
         log "=== Certificate Spreader Completed Successfully ==="
