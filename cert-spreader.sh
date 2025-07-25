@@ -209,8 +209,6 @@ load_config() {
     PLEX_CERT_ENABLED="${PLEX_CERT_ENABLED:-false}"
     ZNC_CERT_ENABLED="${ZNC_CERT_ENABLED:-false}"
     
-    CERT_FILE_MODE="${CERT_FILE_MODE:-644}"      # Default file permissions for certificates
-    PRIVKEY_FILE_MODE="${PRIVKEY_FILE_MODE:-644}"  # Default file permissions for private keys (644 for app compatibility)
 }
 
 # LOGGING FUNCTION:
