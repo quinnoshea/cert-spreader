@@ -795,11 +795,10 @@ main() {
             # (different from ${array[@]} which expands as separate words)
             log "ERROR: Failed to deploy to hosts: ${failed_hosts[*]}"
             
-            # Only exit if we're not in cert-only mode
-            # In cert-only mode, we don't care about service restarts
+            # Continue with remaining operations instead of exiting
+            # Log the failures but don't stop the script from completing other tasks
             if [[ "$CERT_ONLY" != true ]]; then
-                log "Skipping service restarts due to deployment failures"
-                exit 1
+                log "Continuing with service restarts despite deployment failures"
             fi
         fi
     fi
