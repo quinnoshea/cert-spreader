@@ -8,9 +8,9 @@ set -euo pipefail
 # -u: Treat unset variables as errors (prevents typos in variable names)
 # -o pipefail: Make pipelines fail if any command in the pipeline fails
 
-# DEBUG OUTPUT: Show what arguments were passed to the script
+# STARTUP INFO: Show what arguments were passed to the script
 # $@ represents all command line arguments passed to the script
-echo "DEBUG: Script started with args: $@"
+echo "Starting cert-spreader with arguments: $@"
 
 # SCRIPT DESCRIPTION:
 # Certificate Spreader - Simplified Version with Configuration File
@@ -82,13 +82,11 @@ EOF
 # - $@ is all arguments as separate words
 # - while loops and case statements for processing options
 parse_args() {
-    echo "DEBUG: In parse_args with $# args: $@"
     
     # WHILE LOOP: Continue processing while there are arguments left
     # [[ $# -gt 0 ]] means "while number of arguments is greater than 0"
     # [[ ]] is bash's improved test command (better than [ ])
     while [[ $# -gt 0 ]]; do
-        echo "DEBUG: Processing arg: $1"  # $1 is the first remaining argument
         
         # CASE STATEMENT: Like switch/case in other languages
         # Each pattern is checked against $1 (current argument)
@@ -111,7 +109,6 @@ parse_args() {
                 shift
                 ;;
             --permissions-fix)
-                echo "DEBUG: Setting PERMISSIONS_FIX=true"
                 PERMISSIONS_FIX=true
                 shift
                 ;;
@@ -137,9 +134,7 @@ parse_args() {
                 shift
                 ;;
         esac
-        echo "DEBUG: End of case, remaining args: $#"
     done  # End of while loop
-    echo "DEBUG: Exited while loop, starting flag validation"
     
     # FLAG VALIDATION:
     # Ensure only one exclusive flag is set at a time
@@ -148,24 +143,19 @@ parse_args() {
     
     # PARAMETER EXPANSION: ${CERT_ONLY:-unset}
     # This means: use value of CERT_ONLY, or "unset" if CERT_ONLY is empty/unset
-    echo "DEBUG: Checking CERT_ONLY=${CERT_ONLY:-unset}"
     
     # LOGICAL AND (&&): If first condition is true, execute second command
     # ARITHMETIC EXPANSION: $((expression)) performs arithmetic
     [[ "$CERT_ONLY" == true ]] && exclusive_flags=$((exclusive_flags + 1))
-    echo "DEBUG: After CERT_ONLY check, exclusive_flags=$exclusive_flags"
     [[ "$SERVICES_ONLY" == true ]] && exclusive_flags=$((exclusive_flags + 1))
     [[ "$PROXMOX_ONLY" == true ]] && exclusive_flags=$((exclusive_flags + 1))
-    echo "DEBUG: Checking PERMISSIONS_FIX=${PERMISSIONS_FIX:-unset}"
     [[ "$PERMISSIONS_FIX" == true ]] && exclusive_flags=$((exclusive_flags + 1))
-    echo "DEBUG: After all checks, exclusive_flags=$exclusive_flags"
     
     # Check if more than one exclusive flag was set
     if [[ $exclusive_flags -gt 1 ]]; then
         echo "ERROR: Only one of --cert-only, --services-only, --proxmox-only, or --permissions-fix can be used at a time" >&2
         exit 1
     fi
-    echo "DEBUG: parse_args completed successfully"
 }  # End of function
 
 # CONFIGURATION LOADING FUNCTION:
@@ -715,12 +705,10 @@ main() {
     # "$@" passes all command line arguments to the parse_args function
     # This preserves arguments exactly as they were passed to the script
     parse_args "$@"
-    echo "DEBUG: After parse_args - PERMISSIONS_FIX=$PERMISSIONS_FIX"
     
     # CONFIGURATION LOADING:
     # Load settings from configuration file
     load_config
-    echo "DEBUG: After load_config"
     
     # STARTUP LOGGING:
     log "=== Certificate Spreader Started ==="
@@ -728,9 +716,7 @@ main() {
     
     # SPECIAL MODE: PERMISSIONS-FIX ONLY
     # This mode only fixes permissions and exits (doesn't do certificate operations)
-    echo "DEBUG: Checking PERMISSIONS_FIX: $PERMISSIONS_FIX"
     if [[ "$PERMISSIONS_FIX" == true ]]; then
-        echo "DEBUG: Entering permissions-fix mode"
         log "Running in permissions-fix only mode"
         secure_cert_permissions
         log "=== Certificate Spreader Completed Successfully ==="
