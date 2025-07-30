@@ -738,17 +738,17 @@ secure_cert_permissions() {
     
     # Handle ZNC certificate if enabled (more restrictive permissions for ZNC)
     if [[ "${ZNC_CERT_ENABLED:-false}" == true && -f "$CERT_DIR/znc.pem" ]]; then
-        if ! check_permissions "$CERT_DIR/znc.pem" "600" "root:root"; then
+        if ! check_permissions "$CERT_DIR/znc.pem" "644" "root:root"; then
             if [[ "$DRY_RUN" == true ]]; then
-                log "Would secure ZNC certificate: znc.pem (600, root:root)"
+                log "Would secure ZNC certificate: znc.pem (644, root:root)"
             else
-                chmod 600 "$CERT_DIR/znc.pem"    # 600 = rw------- (only owner can read/write)
+                chmod 644 "$CERT_DIR/znc.pem"    # 644 = rw-r--r-- (owner read/write, group/others read)
                 chown root:root "$CERT_DIR/znc.pem"
-                log "Secured ZNC certificate: znc.pem (600, root:root)"
+                log "Secured ZNC certificate: znc.pem (644, root:root)"
             fi
             changes_needed=true
         else
-            log "ZNC certificate permissions OK: znc.pem (600, root:root)"
+            log "ZNC certificate permissions OK: znc.pem (644, root:root)"
         fi
     fi
     

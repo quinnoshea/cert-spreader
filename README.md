@@ -199,7 +199,7 @@ The script automatically secures certificate permissions following Let's Encrypt
 - Private keys (`privkey.pem`): `600` (-rw-------, root:root)
 - Certificates (`cert.pem`, `fullchain.pem`, `chain.pem`): `644` (-rw-r--r--, root:root)
 - Plex certificate (`plex-certificate.pfx`): `644` (-rw-r--r--, root:root) 
-- ZNC certificate (`znc.pem`): `600` (-rw-------, root:root)
+- ZNC certificate (`znc.pem`): `644` (-rw-r--r--, root:root)
 
 **Idempotency:** The script only changes permissions when needed, logging "permissions OK" when they're already correct.
 
