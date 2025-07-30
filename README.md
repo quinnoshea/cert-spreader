@@ -10,7 +10,6 @@ A comprehensive tool for securely deploying Let's Encrypt SSL certificates to mu
 - **Service Restart Intelligence**: Tries reload first, falls back to restart if needed
 - **Configurable Permissions**: Customizable file and directory permissions
 - **Certificate Change Tracking**: Only restarts services on hosts where certificates changed
-- **Comprehensive .gitignore**: Prevents accidental commit of sensitive files
 
 ## 📋 Prerequisites
 
@@ -348,17 +347,6 @@ fi
 
 4. **Configure permissions appropriately**: Use the permission settings to match your security requirements
 
-## 🚨 What Gets Ignored by Git
-
-The `.gitignore` file prevents these sensitive files from being committed:
-
-- `config.conf` (your real configuration)
-- `secrets.env` (environment variables)
-- Certificate files (`*.pem`, `*.pfx`, `*.key`)
-- Log files (`*.log`)
-- Backup and temporary files
-- Test artifacts
-
 ## 🔧 Troubleshooting
 
 ### Common Issues
@@ -422,26 +410,6 @@ The Bash version includes a comprehensive test suite:
 ./test-cert-spreader.sh --cleanup
 ```
 
-## 📝 Migration Guide
-
-### From Previous Versions
-
-If you're upgrading from an earlier version:
-
-1. **Add permission configuration**: Add the new permission variables to your `config.conf`
-2. **Test thoroughly**: The new service restart logic may behave differently
-3. **Update monitoring**: Services will only restart when certificates actually change
-
-### From Complex Scripts
-
-If you're migrating from other certificate deployment solutions:
-
-1. **Extract host lists**: Copy your host definitions to `HOSTS` variable
-2. **Map services**: Convert service configurations to `HOST_SERVICES` format  
-3. **Configure permissions**: Set appropriate permission levels for your environment
-4. **Test thoroughly**: Use `--dry-run` extensively during migration
-5. **Simplify gradually**: Start with basic functionality, add features as needed
-
 ## 🎯 Design Philosophy
 
 This tool follows the principle of **simplicity with intelligence**:
@@ -476,7 +444,9 @@ This tool follows the principle of **simplicity with intelligence**:
 
 ## 📄 License
 
-Private repository - internal use only.
+MIT License - see LICENSE file for details.
+
+This project is open source and freely available for use, modification, and distribution.
 
 ---
 
