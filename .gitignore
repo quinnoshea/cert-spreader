@@ -74,4 +74,4 @@ config.conf
 notes.txt
 secrets.env
 originals/
-python/config.yml
+python/                         # Ignore entire python folder and its contents
