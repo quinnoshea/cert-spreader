@@ -142,20 +142,6 @@ post_hook = /path/to/cert-spreader.py
 certbot renew && /path/to/cert-spreader.sh
 ```
 
-## 📁 Repository Structure
-
-```
-cert-spreader/
-├── cert-spreader.sh           # Main Bash implementation
-├── cert-spreader.py           # Main Python implementation  
-├── test-cert-spreader.sh      # Test suite for Bash version
-├── config.conf                # Your actual config (NOT in git)
-├── config.example.conf        # Configuration template (safe to commit)
-├── secrets.env.example        # Environment variable template
-├── .gitignore                 # Protects sensitive files  
-└── README.md                  # This file
-```
-
 ## ⚙️ Configuration
 
 ### Basic Configuration (config.conf)
