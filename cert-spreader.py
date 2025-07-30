@@ -19,6 +19,8 @@ import urllib.parse
 import urllib.error
 import ssl
 import base64
+import pwd
+import grp
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
 from dataclasses import dataclass, field
@@ -59,6 +61,8 @@ class Config:
     file_permissions: str = "644"        # Default permissions for certificate files
     privkey_permissions: str = "600"     # More restrictive permissions for private key
     directory_permissions: str = "755"   # Directory permissions
+    file_owner: str = "root"             # Default file owner
+    file_group: str = "root"             # Default file group
 
 
 class CertSpreader:
@@ -156,6 +160,8 @@ class CertSpreader:
             echo "FILE_PERMISSIONS=${{FILE_PERMISSIONS:-644}}"
             echo "PRIVKEY_PERMISSIONS=${{PRIVKEY_PERMISSIONS:-600}}"
             echo "DIRECTORY_PERMISSIONS=${{DIRECTORY_PERMISSIONS:-755}}"
+            echo "FILE_OWNER=${{FILE_OWNER:-root}}"
+            echo "FILE_GROUP=${{FILE_GROUP:-root}}"
             '''
             
             result = subprocess.run(['bash', '-c', bash_script], 
@@ -198,6 +204,8 @@ class CertSpreader:
         self.config.file_permissions = config_vars.get('FILE_PERMISSIONS', '644')
         self.config.privkey_permissions = config_vars.get('PRIVKEY_PERMISSIONS', '600')
         self.config.directory_permissions = config_vars.get('DIRECTORY_PERMISSIONS', '755')
+        self.config.file_owner = config_vars.get('FILE_OWNER', 'root')
+        self.config.file_group = config_vars.get('FILE_GROUP', 'root')
         
         # Parse arrays from extracted bash arrays
         self.config.host_services = arrays.get('HOST_SERVICES', [])
@@ -516,6 +524,22 @@ class CertSpreader:
             except urllib.error.URLError as e:
                 self.log(f"WARNING: {node} update failed: {e}")
     
+    def _get_uid_gid(self) -> Tuple[int, int]:
+        """Get UID and GID for configured owner and group"""
+        try:
+            uid = pwd.getpwnam(self.config.file_owner).pw_uid
+        except KeyError:
+            self.log(f"WARNING: User '{self.config.file_owner}' not found, using current user")
+            uid = os.getuid()
+        
+        try:
+            gid = grp.getgrnam(self.config.file_group).gr_gid
+        except KeyError:
+            self.log(f"WARNING: Group '{self.config.file_group}' not found, using current group")
+            gid = os.getgid()
+        
+        return uid, gid
+
     def secure_cert_permissions(self) -> None:
         """Secure certificate file permissions"""
         self.log("Checking and securing certificate directory permissions")
@@ -524,25 +548,33 @@ class CertSpreader:
             self.log("Checking permissions in dry-run mode...")
         
         changes_needed = False
+        uid, gid = self._get_uid_gid()
         
         # Secure certificate directory
         if os.path.isdir(self.config.cert_dir):
             stat_info = os.stat(self.config.cert_dir)
             current_perms = oct(stat_info.st_mode)[-3:]
+            current_uid = stat_info.st_uid
+            current_gid = stat_info.st_gid
             
-            if current_perms != self.config.directory_permissions:
+            perms_need_change = current_perms != self.config.directory_permissions
+            owner_needs_change = current_uid != uid or current_gid != gid
+            
+            if perms_need_change or owner_needs_change:
                 if self.dry_run:
-                    self.log(f"Would secure directory: {self.config.cert_dir} ({self.config.directory_permissions}, root:root)")
+                    self.log(f"Would secure directory: {self.config.cert_dir} ({self.config.directory_permissions}, {self.config.file_owner}:{self.config.file_group})")
                 else:
                     try:
-                        os.chmod(self.config.cert_dir, int(self.config.directory_permissions, 8))
-                        # Note: chown requires root privileges, so we'll skip it in Python for now
-                        self.log(f"Secured directory: {self.config.cert_dir} ({self.config.directory_permissions})")
+                        if perms_need_change:
+                            os.chmod(self.config.cert_dir, int(self.config.directory_permissions, 8))
+                        if owner_needs_change:
+                            os.chown(self.config.cert_dir, uid, gid)
+                        self.log(f"Secured directory: {self.config.cert_dir} ({self.config.directory_permissions}, {self.config.file_owner}:{self.config.file_group})")
                     except OSError as e:
                         self.log(f"WARNING: Failed to secure directory permissions: {e}")
                 changes_needed = True
             else:
-                self.log(f"Directory permissions OK: {self.config.cert_dir} ({self.config.directory_permissions})")
+                self.log(f"Directory permissions OK: {self.config.cert_dir} ({self.config.directory_permissions}, {self.config.file_owner}:{self.config.file_group})")
         
         # Secure certificate files with configurable permissions
         cert_files = {
@@ -557,19 +589,27 @@ class CertSpreader:
             if os.path.isfile(filepath):
                 stat_info = os.stat(filepath)
                 current_perms = oct(stat_info.st_mode)[-3:]
+                current_uid = stat_info.st_uid
+                current_gid = stat_info.st_gid
                 
-                if current_perms != expected_perms:
+                perms_need_change = current_perms != expected_perms
+                owner_needs_change = current_uid != uid or current_gid != gid
+                
+                if perms_need_change or owner_needs_change:
                     if self.dry_run:
-                        self.log(f"Would secure file: {filename} ({expected_perms}, root:root)")
+                        self.log(f"Would secure file: {filename} ({expected_perms}, {self.config.file_owner}:{self.config.file_group})")
                     else:
                         try:
-                            os.chmod(filepath, int(expected_perms, 8))
-                            self.log(f"Secured file: {filename} ({expected_perms})")
+                            if perms_need_change:
+                                os.chmod(filepath, int(expected_perms, 8))
+                            if owner_needs_change:
+                                os.chown(filepath, uid, gid)
+                            self.log(f"Secured file: {filename} ({expected_perms}, {self.config.file_owner}:{self.config.file_group})")
                         except OSError as e:
                             self.log(f"WARNING: Failed to secure {filename}: {e}")
                     changes_needed = True
                 else:
-                    self.log(f"File permissions OK: {filename} ({expected_perms})")
+                    self.log(f"File permissions OK: {filename} ({expected_perms}, {self.config.file_owner}:{self.config.file_group})")
         
         if not changes_needed:
             self.log("All certificate permissions already correct")

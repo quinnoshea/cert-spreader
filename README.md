@@ -188,10 +188,12 @@ PROXMOX_NODES=(
     "proxmox02"
 )
 
-# File permissions (NEW: configurable permissions)
+# File permissions (NEW: configurable permissions and ownership)
 FILE_PERMISSIONS=644                 # Default permissions for certificate files
 PRIVKEY_PERMISSIONS=600              # More restrictive permissions for private keys
 DIRECTORY_PERMISSIONS=755            # Directory permissions
+FILE_OWNER=root                      # File owner (NEW: configurable owner)
+FILE_GROUP=root                      # File group (NEW: configurable group)
 ```
 
 ### Host Services Format
@@ -216,15 +218,17 @@ ZNC_CERT_ENABLED=true
 ZNC_DHPARAM_FILE="/etc/nginx/ssl/dhparam.pem"
 ```
 
-### Configurable Certificate Permissions
+### Configurable Certificate Permissions and Ownership
 
-**NEW FEATURE**: File permissions are now configurable through the configuration file:
+**NEW FEATURE**: File permissions and ownership are now configurable through the configuration file:
 
 ```bash
-# File permissions configuration
+# File permissions and ownership configuration
 FILE_PERMISSIONS=644                 # Default permissions for certificate files (owner: read/write, group/others: read)
 PRIVKEY_PERMISSIONS=600              # More restrictive permissions for private keys (owner: read/write only)
 DIRECTORY_PERMISSIONS=755            # Directory permissions (owner: read/write/execute, group/others: read/execute)
+FILE_OWNER=root                      # File owner (NEW: configurable owner)
+FILE_GROUP=root                      # File group (NEW: configurable group)
 ```
 
 **Default Security Model:**
@@ -232,6 +236,7 @@ DIRECTORY_PERMISSIONS=755            # Directory permissions (owner: read/write/
 - Private keys (`privkey.pem`): `600` (-rw-------, root:root) 
 - Other certificates (`cert.pem`, `fullchain.pem`, etc.): `644` (-rw-r--r--, root:root)
 - Service certificates (Plex, ZNC): Use `FILE_PERMISSIONS` setting
+- **All files and directories**: Default to `root:root` ownership (configurable)
 
 **Customization Examples:**
 ```bash
@@ -239,11 +244,22 @@ DIRECTORY_PERMISSIONS=755            # Directory permissions (owner: read/write/
 FILE_PERMISSIONS=600
 PRIVKEY_PERMISSIONS=600
 DIRECTORY_PERMISSIONS=700
+FILE_OWNER=root
+FILE_GROUP=root
 
-# More permissive setup (group readable)
+# Different group for certificate access
 FILE_PERMISSIONS=644
 PRIVKEY_PERMISSIONS=640
 DIRECTORY_PERMISSIONS=755
+FILE_OWNER=root
+FILE_GROUP=ssl-cert
+
+# Application-specific ownership
+FILE_PERMISSIONS=644
+PRIVKEY_PERMISSIONS=600
+DIRECTORY_PERMISSIONS=755
+FILE_OWNER=nginx
+FILE_GROUP=nginx
 ```
 
 **Manual Permission Fix:** Use `--permissions-fix` to fix permissions without doing anything else.
@@ -260,6 +276,8 @@ Keep `config.conf` for host lists and complex settings, but override sensitive v
 export PROXMOX_TOKEN="your-real-token"
 export PLEX_CERT_PASSWORD="your-real-password"
 export FILE_PERMISSIONS="600"  # Override default permissions
+export FILE_OWNER="nginx"      # Override default owner
+export FILE_GROUP="ssl-cert"   # Override default group
 
 # Run script normally
 ./cert-spreader.sh
@@ -443,6 +461,7 @@ This tool follows the principle of **simplicity with intelligence**:
 - **Service Restart Intelligence**: Automatically tries reload first, falls back to restart
 - **Conditional Restarts**: Only restarts services on hosts where certificates changed
 - **Configurable Permissions**: File and directory permissions are now configurable
+- **Configurable Ownership**: File owner and group are now configurable (NEW)
 - **Python Implementation**: Complete Python version with identical functionality
 - **Better Hash Handling**: Improved certificate change detection (fixed quote escaping issues)
 - **Enhanced Testing**: Comprehensive test suite for validation
@@ -465,4 +484,4 @@ Private repository - internal use only.
 
 **💡 Pro Tip**: Always run with `--dry-run` first to see what the script will do before making actual changes.
 
-**🔧 New Feature**: Configure file permissions to match your security requirements using the new permission settings!
+**🔧 New Feature**: Configure file permissions and ownership to match your security requirements using the new permission and ownership settings!

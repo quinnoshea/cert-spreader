@@ -216,6 +216,8 @@ load_config() {
     FILE_PERMISSIONS="${FILE_PERMISSIONS:-644}"          # Default permissions for certificate files
     PRIVKEY_PERMISSIONS="${PRIVKEY_PERMISSIONS:-600}"    # More restrictive permissions for private key
     DIRECTORY_PERMISSIONS="${DIRECTORY_PERMISSIONS:-755}" # Directory permissions
+    FILE_OWNER="${FILE_OWNER:-root}"                     # Default file owner
+    FILE_GROUP="${FILE_GROUP:-root}"                     # Default file group
     
     # ENHANCED CONFIGURATION VALIDATION
     validate_config
@@ -622,7 +624,7 @@ generate_service_certificates() {
 check_permissions() {
     local path="$1"                         # Path to file or directory to check
     local expected_perms="$2"               # Expected permissions in octal (e.g., "644")
-    local expected_owner="${3:-root:root}"  # Expected owner with default
+    local expected_owner="${3:-$FILE_OWNER:$FILE_GROUP}"  # Expected owner with configurable default
     
     # DETERMINE PATH TYPE AND CHECK EXISTENCE:
     local path_type=""
@@ -665,17 +667,17 @@ discover_and_secure_cert_files() {
         
         # Only process files that actually exist
         if [[ -f "$filepath" ]]; then
-            if ! check_permissions "$filepath" "$expected_perms" "root:root"; then
+            if ! check_permissions "$filepath" "$expected_perms" "$FILE_OWNER:$FILE_GROUP"; then
                 if [[ "$DRY_RUN" == true ]]; then
-                    log "Would secure file: $filename ($expected_perms, root:root)"
+                    log "Would secure file: $filename ($expected_perms, $FILE_OWNER:$FILE_GROUP)"
                 else
                     chmod "$expected_perms" "$filepath"
-                    chown root:root "$filepath"
-                    log "Secured file: $filename ($expected_perms, root:root)"
+                    chown "$FILE_OWNER:$FILE_GROUP" "$filepath"
+                    log "Secured file: $filename ($expected_perms, $FILE_OWNER:$FILE_GROUP)"
                 fi
                 changes_needed=true
             else
-                log "File permissions OK: $filename ($expected_perms, root:root)"
+                log "File permissions OK: $filename ($expected_perms, $FILE_OWNER:$FILE_GROUP)"
             fi
         fi
     done
@@ -697,17 +699,17 @@ discover_and_secure_cert_files() {
             default_perms="$PRIVKEY_PERMISSIONS"  # Use private key permissions for key files
         fi
         
-        if ! check_permissions "$pem_file" "$default_perms" "root:root"; then
+        if ! check_permissions "$pem_file" "$default_perms" "$FILE_OWNER:$FILE_GROUP"; then
             if [[ "$DRY_RUN" == true ]]; then
-                log "Would secure discovered file: $filename ($default_perms, root:root)"
+                log "Would secure discovered file: $filename ($default_perms, $FILE_OWNER:$FILE_GROUP)"
             else
                 chmod "$default_perms" "$pem_file"
-                chown root:root "$pem_file"
-                log "Secured discovered file: $filename ($default_perms, root:root)"
+                chown "$FILE_OWNER:$FILE_GROUP" "$pem_file"
+                log "Secured discovered file: $filename ($default_perms, $FILE_OWNER:$FILE_GROUP)"
             fi
             changes_needed=true
         else
-            log "Discovered file permissions OK: $filename ($default_perms, root:root)"
+            log "Discovered file permissions OK: $filename ($default_perms, $FILE_OWNER:$FILE_GROUP)"
         fi
     done
 }
@@ -729,20 +731,20 @@ secure_cert_permissions() {
     # First, ensure the certificate directory itself has correct permissions
     if [[ -d "$CERT_DIR" ]]; then
         # Use our consolidated permissions function to check directory permissions
-        if ! check_permissions "$CERT_DIR" "$DIRECTORY_PERMISSIONS" "root:root"; then
+        if ! check_permissions "$CERT_DIR" "$DIRECTORY_PERMISSIONS" "$FILE_OWNER:$FILE_GROUP"; then
             if [[ "$DRY_RUN" == true ]]; then
-                log "Would secure directory: $CERT_DIR ($DIRECTORY_PERMISSIONS, root:root)"
+                log "Would secure directory: $CERT_DIR ($DIRECTORY_PERMISSIONS, $FILE_OWNER:$FILE_GROUP)"
             else
                 # PERMISSION COMMANDS:
                 # chmod changes file/directory permissions
                 # chown changes file/directory ownership
                 chmod "$DIRECTORY_PERMISSIONS" "$CERT_DIR"
-                chown root:root "$CERT_DIR"  # Set owner to root user, root group
-                log "Secured directory: $CERT_DIR ($DIRECTORY_PERMISSIONS, root:root)"
+                chown "$FILE_OWNER:$FILE_GROUP" "$CERT_DIR"  # Set owner to configured user/group
+                log "Secured directory: $CERT_DIR ($DIRECTORY_PERMISSIONS, $FILE_OWNER:$FILE_GROUP)"
             fi
             changes_needed=true
         else
-            log "Directory permissions OK: $CERT_DIR ($DIRECTORY_PERMISSIONS, root:root)"
+            log "Directory permissions OK: $CERT_DIR ($DIRECTORY_PERMISSIONS, $FILE_OWNER:$FILE_GROUP)"
         fi
     else
         log "WARNING: Certificate directory does not exist: $CERT_DIR"
@@ -757,33 +759,33 @@ secure_cert_permissions() {
     # SECURE SERVICE-SPECIFIC CERTIFICATES:
     # Handle Plex certificate if enabled
     if [[ "${PLEX_CERT_ENABLED:-false}" == true && -f "$CERT_DIR/plex-certificate.pfx" ]]; then
-        if ! check_permissions "$CERT_DIR/plex-certificate.pfx" "$FILE_PERMISSIONS" "root:root"; then
+        if ! check_permissions "$CERT_DIR/plex-certificate.pfx" "$FILE_PERMISSIONS" "$FILE_OWNER:$FILE_GROUP"; then
             if [[ "$DRY_RUN" == true ]]; then
-                log "Would secure Plex certificate: plex-certificate.pfx ($FILE_PERMISSIONS, root:root)"
+                log "Would secure Plex certificate: plex-certificate.pfx ($FILE_PERMISSIONS, $FILE_OWNER:$FILE_GROUP)"
             else
                 chmod "$FILE_PERMISSIONS" "$CERT_DIR/plex-certificate.pfx"
-                chown root:root "$CERT_DIR/plex-certificate.pfx"
-                log "Secured Plex certificate: plex-certificate.pfx ($FILE_PERMISSIONS, root:root)"
+                chown "$FILE_OWNER:$FILE_GROUP" "$CERT_DIR/plex-certificate.pfx"
+                log "Secured Plex certificate: plex-certificate.pfx ($FILE_PERMISSIONS, $FILE_OWNER:$FILE_GROUP)"
             fi
             changes_needed=true
         else
-            log "Plex certificate permissions OK: plex-certificate.pfx ($FILE_PERMISSIONS, root:root)"
+            log "Plex certificate permissions OK: plex-certificate.pfx ($FILE_PERMISSIONS, $FILE_OWNER:$FILE_GROUP)"
         fi
     fi
     
     # Handle ZNC certificate if enabled
     if [[ "${ZNC_CERT_ENABLED:-false}" == true && -f "$CERT_DIR/znc.pem" ]]; then
-        if ! check_permissions "$CERT_DIR/znc.pem" "$FILE_PERMISSIONS" "root:root"; then
+        if ! check_permissions "$CERT_DIR/znc.pem" "$FILE_PERMISSIONS" "$FILE_OWNER:$FILE_GROUP"; then
             if [[ "$DRY_RUN" == true ]]; then
-                log "Would secure ZNC certificate: znc.pem ($FILE_PERMISSIONS, root:root)"
+                log "Would secure ZNC certificate: znc.pem ($FILE_PERMISSIONS, $FILE_OWNER:$FILE_GROUP)"
             else
                 chmod "$FILE_PERMISSIONS" "$CERT_DIR/znc.pem"
-                chown root:root "$CERT_DIR/znc.pem"
-                log "Secured ZNC certificate: znc.pem ($FILE_PERMISSIONS, root:root)"
+                chown "$FILE_OWNER:$FILE_GROUP" "$CERT_DIR/znc.pem"
+                log "Secured ZNC certificate: znc.pem ($FILE_PERMISSIONS, $FILE_OWNER:$FILE_GROUP)"
             fi
             changes_needed=true
         else
-            log "ZNC certificate permissions OK: znc.pem ($FILE_PERMISSIONS, root:root)"
+            log "ZNC certificate permissions OK: znc.pem ($FILE_PERMISSIONS, $FILE_OWNER:$FILE_GROUP)"
         fi
     fi
     
