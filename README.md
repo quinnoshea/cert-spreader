@@ -397,10 +397,11 @@ ls -la /etc/letsencrypt/live/domain/
 
 ### Testing
 
-The Bash version includes a comprehensive test suite:
+Both implementations include comprehensive test suites:
 
+**Bash Testing Framework:**
 ```bash
-# Run all tests
+# Run all Bash tests
 ./test-cert-spreader.sh
 
 # Setup test environment for manual testing
@@ -409,6 +410,26 @@ The Bash version includes a comprehensive test suite:
 # Clean up test environment
 ./test-cert-spreader.sh --cleanup
 ```
+
+**Python Testing Framework:**
+```bash
+# Run all Python tests
+./test-cert-spreader.py
+
+# Run with verbose output
+./test-cert-spreader.py -v
+
+# Run specific test class
+python3 -m unittest test-cert-spreader.TestOwnerGroupFunctionality -v
+```
+
+**Run Both Test Suites:**
+```bash
+# Run both test frameworks
+./test-cert-spreader.sh && ./test-cert-spreader.py
+```
+
+See `TESTING.md` for detailed testing documentation and test coverage information.
 
 ## 🎯 Design Philosophy
 
