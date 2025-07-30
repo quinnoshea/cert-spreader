@@ -25,6 +25,15 @@ echo "Starting cert-spreader with arguments: $@"
 # This will be used if no config file is specified on command line
 CONFIG_FILE="config.conf"
 
+# STANDARDIZED ERROR CODES
+readonly ERR_SUCCESS=0          # Success
+readonly ERR_CONFIG=1           # Configuration error
+readonly ERR_CERT=2             # Certificate error
+readonly ERR_NETWORK=3          # Network/connectivity error
+readonly ERR_PERMISSION=4       # Permission error
+readonly ERR_VALIDATION=5       # Validation error
+readonly ERR_USAGE=6            # Usage/argument error
+
 # COMMAND LINE FLAGS:
 # These boolean flags control script behavior
 # In bash, we use true/false strings to represent boolean values
@@ -71,7 +80,7 @@ Examples:
     $0 --permissions-fix       # Fix certificate permissions only
     $0 custom.conf --dry-run   # Use custom config in dry-run mode
 EOF
-    exit 0
+    exit $ERR_SUCCESS
 }
 
 # ARGUMENT PARSING FUNCTION:
@@ -120,7 +129,8 @@ parse_args() {
                 # Pattern for any argument starting with - (unknown option)
                 # >&2 means redirect output to stderr (file descriptor 2)
                 echo "Unknown option: $1" >&2
-                usage
+                echo "Use --help for usage information" >&2
+                exit $ERR_USAGE
                 ;;
             *)
                 # Default case: anything that doesn't match above patterns
@@ -128,7 +138,7 @@ parse_args() {
                 if [[ "$1" != *.conf ]]; then
                     # Pattern matching: *.conf means "ends with .conf"
                     echo "Config file should have .conf extension: $1" >&2
-                    exit 1  # Exit with error code 1
+                    exit $ERR_USAGE
                 fi
                 CONFIG_FILE="$1"  # Store the config file name
                 shift
@@ -154,7 +164,7 @@ parse_args() {
     # Check if more than one exclusive flag was set
     if [[ $exclusive_flags -gt 1 ]]; then
         echo "ERROR: Only one of --cert-only, --services-only, --proxmox-only, or --permissions-fix can be used at a time" >&2
-        exit 1
+        exit $ERR_USAGE
     fi
 }  # End of function
 
@@ -167,7 +177,7 @@ load_config() {
     if [[ ! -f "$CONFIG_FILE" ]]; then
         echo "ERROR: Configuration file '$CONFIG_FILE' not found" >&2
         echo "Copy config.example.conf to $CONFIG_FILE and customize it" >&2
-        exit 1
+        exit $ERR_CONFIG
     fi
     
     # SOURCE COMMAND: 'source' executes another script in the current shell context
@@ -187,7 +197,7 @@ load_config() {
         # -z tests if string is empty
         if [[ -z "${!var:-}" ]]; then
             echo "ERROR: Required variable '$var' not set in $CONFIG_FILE" >&2
-            exit 1
+            exit $ERR_CONFIG
         fi
     done
     
@@ -199,6 +209,59 @@ load_config() {
     PLEX_CERT_ENABLED="${PLEX_CERT_ENABLED:-false}"
     ZNC_CERT_ENABLED="${ZNC_CERT_ENABLED:-false}"
     
+    # ENHANCED CONFIGURATION VALIDATION
+    validate_config
+}
+
+# ENHANCED CONFIGURATION VALIDATION FUNCTION:
+# This function performs deeper validation of configuration values
+validate_config() {
+    local validation_errors=0
+    
+    # Validate certificate directory exists and is readable
+    if [[ ! -d "$CERT_DIR" ]]; then
+        echo "ERROR: Certificate directory does not exist: $CERT_DIR" >&2
+        validation_errors=$((validation_errors + 1))
+    elif [[ ! -r "$CERT_DIR" ]]; then
+        echo "ERROR: Certificate directory is not readable: $CERT_DIR" >&2
+        validation_errors=$((validation_errors + 1))
+    fi
+    
+    # Validate domain format (basic check)
+    if [[ ! "$DOMAIN" =~ ^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]; then
+        echo "WARNING: DOMAIN format may be invalid: $DOMAIN" >&2
+    fi
+    
+    # Validate HOSTS is not empty
+    if [[ -z "$HOSTS" ]]; then
+        echo "ERROR: HOSTS variable is empty - no hosts to deploy to" >&2
+        validation_errors=$((validation_errors + 1))
+    fi
+    
+    # Validate HOST_SERVICES array format if it exists
+    if [[ ${#HOST_SERVICES[@]} -gt 0 ]]; then
+        for host_config in "${HOST_SERVICES[@]}"; do
+            if [[ ! "$host_config" =~ ^[^:]+:[0-9]+:.+ ]]; then
+                echo "ERROR: Invalid HOST_SERVICES format: $host_config" >&2
+                echo "Expected format: hostname:port:service1,service2" >&2
+                validation_errors=$((validation_errors + 1))
+            fi
+        done
+    fi
+    
+    # Validate Proxmox configuration if enabled
+    if [[ -n "${PROXMOX_USER:-}" && -n "${PROXMOX_TOKEN:-}" ]]; then
+        if [[ ! "$PROXMOX_USER" =~ ^[^!]+![^!]+$ ]]; then
+            echo "ERROR: PROXMOX_USER must be in 'user@realm!tokenid' format" >&2
+            validation_errors=$((validation_errors + 1))
+        fi
+    fi
+    
+    # Exit if any validation errors were found
+    if [[ $validation_errors -gt 0 ]]; then
+        echo "Configuration validation failed with $validation_errors error(s)" >&2
+        exit $ERR_VALIDATION
+    fi
 }
 
 # LOGGING FUNCTION:
@@ -225,6 +288,31 @@ log() {
     fi
 }
 
+# SSH COMMAND CONSTRUCTION FUNCTION:
+# This function builds SSH commands with consistent options and port handling
+# This eliminates duplication and ensures consistent SSH behavior
+build_ssh_command() {
+    local host="$1"           # Hostname (without domain)
+    local port="${2:-22}"     # SSH port with default
+    local command="${3:-}"    # Optional command to execute
+    
+    # Start with base SSH command and options
+    local ssh_cmd="ssh $SSH_OPTS"
+    
+    # Add custom port if not default
+    if [[ "$port" != "22" ]]; then
+        ssh_cmd="$ssh_cmd -p $port"
+    fi
+    
+    # Add host and command
+    ssh_cmd="$ssh_cmd root@$host.$DOMAIN"
+    if [[ -n "$command" ]]; then
+        ssh_cmd="$ssh_cmd '$command'"
+    fi
+    
+    echo "$ssh_cmd"
+}
+
 # CERTIFICATE CHANGE DETECTION FUNCTION:
 # This function checks if a certificate has changed by comparing hashes
 # This enables idempotency - only deploy if certificate actually changed
@@ -235,24 +323,17 @@ cert_changed() {
     # PARAMETER DEFAULT: ${2:-22} means "use $2, or 22 if $2 is empty/unset"
     local port="${2:-22}"  # Second parameter with default value
     
-    # BUILD SSH COMMAND: Start with base SSH options
-    local ssh_cmd="ssh $SSH_OPTS"
-    
-    # ADD PORT if different from default
-    if [[ "$port" != "22" ]]; then
-        ssh_cmd="$ssh_cmd -p $port"
-    fi
-    
     # CALCULATE LOCAL HASH:
     # sha256sum generates SHA-256 hash of file
     # cut -d' ' -f1 extracts first field (the hash) using space as delimiter
     local local_hash=$(sha256sum "$CERT_DIR/fullchain.pem" | cut -d' ' -f1)
     
     # CALCULATE REMOTE HASH:
-    # Run sha256sum on remote host via SSH
+    # Use our SSH command builder and run sha256sum on remote host
     # 2>/dev/null suppresses error messages
     # || echo "none" provides fallback if command fails
-    local remote_hash=$($ssh_cmd "root@$host.$DOMAIN" "sha256sum $CERT_DIR/fullchain.pem 2>/dev/null | cut -d' ' -f1" || echo "none")
+    local ssh_cmd=$(build_ssh_command "$host" "$port" "sha256sum $CERT_DIR/fullchain.pem 2>/dev/null | cut -d' ' -f1")
+    local remote_hash=$(eval "$ssh_cmd" || echo "none")
     
     # COMPARISON: Return true (0) if hashes are different, false (1) if same
     # This is the return value of the function - bash functions return the exit code of last command
@@ -297,11 +378,11 @@ deploy_to_host() {
     # Trailing slashes are important in rsync!
     if ! rsync -aL -e "$rsync_ssh" "$CERT_DIR/" "root@$host.$DOMAIN:$CERT_DIR/"; then
         log "ERROR: Failed to deploy certificates to $host"
-        return 1  # Return error code
+        return $ERR_NETWORK  # Return network error code
     fi
     
     log "Successfully deployed certificates to $host"
-    return 0  # Return success
+    return $ERR_SUCCESS  # Return success
 }
 
 # SERVICE RESTART FUNCTION:
@@ -349,13 +430,11 @@ restart_services() {
         service_cmd=${service_cmd%% && }
         
         # EXECUTE REMOTE COMMAND:
-        local ssh_cmd="ssh $SSH_OPTS"
-        if [[ "$port" != "22" ]]; then
-            ssh_cmd="$ssh_cmd -p $port"
-        fi
+        # Use our SSH command builder for consistency
+        local ssh_cmd=$(build_ssh_command "$host" "$port" "$service_cmd")
         
         # CONDITIONAL EXECUTION: if command succeeds, then... else...
-        if $ssh_cmd "root@$host.$DOMAIN" "$service_cmd"; then
+        if eval "$ssh_cmd"; then
             log "Successfully restarted services on $host"
         else
             log "WARNING: Failed to restart services on $host"
@@ -402,7 +481,7 @@ update_proxmox() {
         local token_id="${BASH_REMATCH[2]}"
     else
         log "ERROR: PROXMOX_USER must be in 'user@realm!tokenid' format"
-        return 1
+        return $ERR_CONFIG
     fi
     
     # PROCESS EACH PROXMOX NODE:
@@ -502,53 +581,100 @@ generate_service_certificates() {
     fi
 }
 
-# FILE PERMISSIONS CHECK FUNCTION:
-# This helper function checks if a file has correct permissions and ownership
-# It demonstrates the 'stat' command and compound boolean conditions
-check_file_permissions() {
-    local filepath="$1"         # Path to file to check
-    local expected_perms="$2"   # Expected permissions in octal (e.g., "644")
+# CONSOLIDATED PERMISSIONS CHECK FUNCTION:
+# This unified function checks permissions and ownership for both files and directories
+# Consolidates the previous separate file and directory permission functions
+check_permissions() {
+    local path="$1"                         # Path to file or directory to check
+    local expected_perms="$2"               # Expected permissions in octal (e.g., "644")
     local expected_owner="${3:-root:root}"  # Expected owner with default
     
-    # FILE EXISTENCE CHECK: -f tests for regular file
-    if [[ ! -f "$filepath" ]]; then
-        return 1  # Return error code if file doesn't exist
+    # DETERMINE PATH TYPE AND CHECK EXISTENCE:
+    local path_type=""
+    if [[ -f "$path" ]]; then
+        path_type="file"
+    elif [[ -d "$path" ]]; then
+        path_type="directory"
+    else
+        return 1  # Return error if path doesn't exist or is neither file nor directory
     fi
     
-    # GET CURRENT PERMISSIONS:
+    # GET CURRENT PERMISSIONS AND OWNERSHIP:
     # stat -c "%a" outputs permissions in octal format (e.g., 644)
-    # %a format specifier gets file permissions in octal
-    local current_perms=$(stat -c "%a" "$filepath")
-    
-    # GET CURRENT OWNERSHIP:
-    # %U gets owner username, %G gets group name
-    local current_owner=$(stat -c "%U:%G" "$filepath")
+    # stat -c "%U:%G" outputs owner:group format
+    local current_perms=$(stat -c "%a" "$path")
+    local current_owner=$(stat -c "%U:%G" "$path")
     
     # COMPOUND BOOLEAN CHECK:
-    # && is logical AND - both conditions must be true
-    # This returns true (0) if both permissions and ownership match expected values
+    # Return true (0) if both permissions and ownership match expected values
     [[ "$current_perms" == "$expected_perms" && "$current_owner" == "$expected_owner" ]]
 }
 
-# DIRECTORY PERMISSIONS CHECK FUNCTION:
-# Similar to file permissions check, but for directories
-# Same logic as check_file_permissions but uses -d test for directories
-check_dir_permissions() {
-    local dirpath="$1"          # Path to directory to check
-    local expected_perms="$2"   # Expected permissions in octal
-    local expected_owner="${3:-root:root}"  # Expected owner with default
+# DYNAMIC CERTIFICATE FILE DISCOVERY AND SECURITY FUNCTION:
+# This function discovers certificate files dynamically and secures them
+# More flexible than hardcoded arrays - adapts to different certificate setups
+discover_and_secure_cert_files() {
+    # Define standard certificate file patterns and their permissions
+    # Using associative array for better organization
+    declare -A cert_file_perms=(
+        ["privkey.pem"]="644"      # Private key (NOTE: Usually 600, but this app needs 644)
+        ["cert.pem"]="644"         # Certificate 
+        ["fullchain.pem"]="644"    # Full certificate chain
+        ["chain.pem"]="644"        # Intermediate chain (optional)
+    )
     
-    # DIRECTORY EXISTENCE CHECK: -d tests for directory
-    if [[ ! -d "$dirpath" ]]; then
-        return 1  # Return error if directory doesn't exist
-    fi
+    # Process each certificate file type
+    for filename in "${!cert_file_perms[@]}"; do
+        local filepath="$CERT_DIR/$filename"
+        local expected_perms="${cert_file_perms[$filename]}"
+        
+        # Only process files that actually exist
+        if [[ -f "$filepath" ]]; then
+            if ! check_permissions "$filepath" "$expected_perms" "root:root"; then
+                if [[ "$DRY_RUN" == true ]]; then
+                    log "Would secure file: $filename ($expected_perms, root:root)"
+                else
+                    chmod "$expected_perms" "$filepath"
+                    chown root:root "$filepath"
+                    log "Secured file: $filename ($expected_perms, root:root)"
+                fi
+                changes_needed=true
+            else
+                log "File permissions OK: $filename ($expected_perms, root:root)"
+            fi
+        fi
+    done
     
-    # Same stat commands as for files - stat works on both files and directories
-    local current_perms=$(stat -c "%a" "$dirpath")
-    local current_owner=$(stat -c "%U:%G" "$dirpath")
-    
-    # Return true if both permissions and ownership match
-    [[ "$current_perms" == "$expected_perms" && "$current_owner" == "$expected_owner" ]]
+    # Discover and secure any additional .pem files in the directory
+    # This catches custom certificate files that might exist
+    for pem_file in "$CERT_DIR"/*.pem; do
+        # Check if glob found actual files (avoid processing literal *.pem)
+        [[ -f "$pem_file" ]] || continue
+        
+        local filename=$(basename "$pem_file")
+        
+        # Skip files we already processed above
+        [[ -n "${cert_file_perms[$filename]:-}" ]] && continue
+        
+        # Default permissions for discovered .pem files
+        local default_perms="644"
+        if [[ "$filename" == *"key"* || "$filename" == *"private"* ]]; then
+            default_perms="644"  # Keep consistent with privkey.pem
+        fi
+        
+        if ! check_permissions "$pem_file" "$default_perms" "root:root"; then
+            if [[ "$DRY_RUN" == true ]]; then
+                log "Would secure discovered file: $filename ($default_perms, root:root)"
+            else
+                chmod "$default_perms" "$pem_file"
+                chown root:root "$pem_file"
+                log "Secured discovered file: $filename ($default_perms, root:root)"
+            fi
+            changes_needed=true
+        else
+            log "Discovered file permissions OK: $filename ($default_perms, root:root)"
+        fi
+    done
 }
 
 # CERTIFICATE PERMISSIONS SECURITY FUNCTION:
@@ -567,8 +693,8 @@ secure_cert_permissions() {
     # SECURE CERTIFICATE DIRECTORY:
     # First, ensure the certificate directory itself has correct permissions
     if [[ -d "$CERT_DIR" ]]; then
-        # Use our helper function to check directory permissions
-        if ! check_dir_permissions "$CERT_DIR" "755" "root:root"; then
+        # Use our consolidated permissions function to check directory permissions
+        if ! check_permissions "$CERT_DIR" "755" "root:root"; then
             if [[ "$DRY_RUN" == true ]]; then
                 log "Would secure directory: $CERT_DIR (755, root:root)"
             else
@@ -585,46 +711,18 @@ secure_cert_permissions() {
         fi
     else
         log "WARNING: Certificate directory does not exist: $CERT_DIR"
-        return 1
+        return $ERR_CERT
     fi
     
     # SECURE INDIVIDUAL CERTIFICATE FILES:
-    # Array containing filename:permissions pairs
-    # This is a structured way to define multiple files with their required permissions
-    local cert_files=(
-        "privkey.pem:644"      # Private key - readable by services (NOTE: Usually 600, but this app needs 644)
-        "cert.pem:644"         # Certificate - readable by services
-        "fullchain.pem:644"    # Full chain - readable by services  
-        "chain.pem:644"        # Intermediate chain - if it exists
-    )
-    
-    # PROCESS EACH CERTIFICATE FILE:
-    for file_perm in "${cert_files[@]}"; do
-        # SPLIT STRING: Extract filename and permissions from "filename:perms" format
-        IFS=':' read -r filename perms <<< "$file_perm"
-        local filepath="$CERT_DIR/$filename"
-        
-        # Only process files that actually exist
-        if [[ -f "$filepath" ]]; then
-            if ! check_file_permissions "$filepath" "$perms" "root:root"; then
-                if [[ "$DRY_RUN" == true ]]; then
-                    log "Would secure file: $filename ($perms, root:root)"
-                else
-                    chmod "$perms" "$filepath"        # Set file permissions
-                    chown root:root "$filepath"       # Set file ownership
-                    log "Secured file: $filename ($perms, root:root)"
-                fi
-                changes_needed=true
-            else
-                log "File permissions OK: $filename ($perms, root:root)"
-            fi
-        fi
-    done
+    # Use dynamic discovery to find certificate files and set appropriate permissions
+    # This approach is more flexible than hardcoded arrays
+    discover_and_secure_cert_files
     
     # SECURE SERVICE-SPECIFIC CERTIFICATES:
     # Handle Plex certificate if enabled
     if [[ "${PLEX_CERT_ENABLED:-false}" == true && -f "$CERT_DIR/plex-certificate.pfx" ]]; then
-        if ! check_file_permissions "$CERT_DIR/plex-certificate.pfx" "644" "root:root"; then
+        if ! check_permissions "$CERT_DIR/plex-certificate.pfx" "644" "root:root"; then
             if [[ "$DRY_RUN" == true ]]; then
                 log "Would secure Plex certificate: plex-certificate.pfx (644, root:root)"
             else
@@ -640,7 +738,7 @@ secure_cert_permissions() {
     
     # Handle ZNC certificate if enabled (more restrictive permissions for ZNC)
     if [[ "${ZNC_CERT_ENABLED:-false}" == true && -f "$CERT_DIR/znc.pem" ]]; then
-        if ! check_file_permissions "$CERT_DIR/znc.pem" "600" "root:root"; then
+        if ! check_permissions "$CERT_DIR/znc.pem" "600" "root:root"; then
             if [[ "$DRY_RUN" == true ]]; then
                 log "Would secure ZNC certificate: znc.pem (600, root:root)"
             else
@@ -720,7 +818,7 @@ main() {
         log "Running in permissions-fix only mode"
         secure_cert_permissions
         log "=== Certificate Spreader Completed Successfully ==="
-        return 0  # Early exit - don't do anything else
+        return $ERR_SUCCESS  # Early exit - don't do anything else
     fi
     
     # CERTIFICATE FILE VALIDATION:
@@ -732,7 +830,7 @@ main() {
             # FILE SIZE TEST: -s checks if file exists and is not empty
             if [[ ! -s "$CERT_DIR/$file" ]]; then
                 log "ERROR: Certificate file missing or empty: $CERT_DIR/$file"
-                exit 1  # Exit with error - can't proceed without certificates
+                exit $ERR_CERT  # Exit with error - can't proceed without certificates
             fi
         done
     fi
