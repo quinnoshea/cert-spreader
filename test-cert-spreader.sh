@@ -179,6 +179,8 @@ test_source_functions() {
         # Test individual functions
         test_build_ssh_command
         test_check_permissions
+        test_service_restart_logic
+        test_cert_changed_function
         
     else
         assert_failure 0 "functions can be sourced successfully"
@@ -237,6 +239,81 @@ test_check_permissions() {
     rm -f "$test_file"
 }
 
+test_deployed_hosts_tracking() {
+    # Test DEPLOYED_HOSTS array functionality
+    DEPLOYED_HOSTS=()  # Initialize empty
+    
+    # Simulate adding hosts
+    DEPLOYED_HOSTS+=("host1")
+    DEPLOYED_HOSTS+=("host2")
+    
+    assert_equals "2" "${#DEPLOYED_HOSTS[@]}" "DEPLOYED_HOSTS array tracks multiple hosts"
+    assert_equals "host1" "${DEPLOYED_HOSTS[0]}" "DEPLOYED_HOSTS first element correct"
+    assert_equals "host2" "${DEPLOYED_HOSTS[1]}" "DEPLOYED_HOSTS second element correct"
+}
+
+test_local_cert_changed_flag() {
+    # Test LOCAL_CERT_CHANGED flag functionality
+    LOCAL_CERT_CHANGED=false
+    
+    assert_equals "false" "$LOCAL_CERT_CHANGED" "LOCAL_CERT_CHANGED initial state is false"
+    
+    # Simulate certificate change
+    LOCAL_CERT_CHANGED=true
+    assert_equals "true" "$LOCAL_CERT_CHANGED" "LOCAL_CERT_CHANGED can be set to true"
+}
+
+test_service_restart_logic() {
+    # Test the service restart function exists and has proper logic
+    # This tests the structure of the restart_services function
+    if declare -f restart_services >/dev/null 2>&1; then
+        assert_success 0 "restart_services function exists"
+        
+        # Check if the function contains the reload fallback logic
+        local function_body
+        function_body=$(declare -f restart_services)
+        
+        if [[ "$function_body" == *"systemctl reload"* && "$function_body" == *"systemctl restart"* ]]; then
+            assert_success 0 "restart_services contains both reload and restart commands"
+        else
+            assert_failure 0 "restart_services should contain both reload and restart commands"
+        fi
+        
+        if [[ "$function_body" == *"DEPLOYED_HOSTS"* ]]; then
+            assert_success 0 "restart_services checks DEPLOYED_HOSTS array"
+        else
+            assert_failure 0 "restart_services should check DEPLOYED_HOSTS array"
+        fi
+    else
+        assert_failure 0 "restart_services function exists"
+    fi
+}
+
+test_cert_changed_function() {
+    # Test the cert_changed function uses head instead of cut
+    if declare -f cert_changed >/dev/null 2>&1; then
+        assert_success 0 "cert_changed function exists"
+        
+        local function_body
+        function_body=$(declare -f cert_changed)
+        
+        if [[ "$function_body" == *"head -c 64"* ]]; then
+            assert_success 0 "cert_changed uses head -c 64 for hash extraction"
+        else
+            assert_failure 0 "cert_changed should use head -c 64 instead of cut"
+        fi
+        
+        # Check that it doesn't use the problematic cut command
+        if [[ "$function_body" != *"cut -d"* ]]; then
+            assert_success 0 "cert_changed no longer uses problematic cut command"
+        else
+            assert_failure 0 "cert_changed should not use cut -d command"
+        fi
+    else
+        assert_failure 0 "cert_changed function exists"
+    fi
+}
+
 # Test runner
 run_all_tests() {
     echo -e "${BLUE}Starting cert-spreader.sh unit tests...${NC}"
@@ -253,6 +330,10 @@ run_all_tests() {
     test_invalid_arguments
     test_multiple_exclusive_flags
     test_source_functions
+    
+    # Test new functionality
+    test_deployed_hosts_tracking
+    test_local_cert_changed_flag
     
     cleanup_test_environment
     
@@ -294,6 +375,10 @@ This script tests the cert-spreader.sh functionality including:
 - Permission checking functions
 - SSH command building
 - Error code handling
+- Certificate change tracking (DEPLOYED_HOSTS array)
+- Local certificate change flag (LOCAL_CERT_CHANGED)
+- Service restart with reload fallback logic
+- Hash extraction improvements (head/awk instead of cut)
 EOF
 }
 

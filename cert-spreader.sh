@@ -50,6 +50,8 @@ PERMISSIONS_FIX=false  # Only fix certificate file permissions
 # () creates an empty array
 declare -ag HOST_SERVICES=()   # Array to store host:port:services configurations
 declare -ag PROXMOX_NODES=()   # Array to store Proxmox node names
+declare -ag DEPLOYED_HOSTS=()  # Array to track hosts where certificates were actually deployed
+LOCAL_CERT_CHANGED=false       # Track if local certificates changed
 
 # USAGE FUNCTION:
 # Functions in bash are defined with: function_name() { commands; }
@@ -325,14 +327,14 @@ cert_changed() {
     
     # CALCULATE LOCAL HASH:
     # sha256sum generates SHA-256 hash of file
-    # cut -d' ' -f1 extracts first field (the hash) using space as delimiter
-    local local_hash=$(sha256sum "$CERT_DIR/fullchain.pem" | cut -d' ' -f1)
+    # head -c 64 extracts first 64 characters (the hash)
+    local local_hash=$(sha256sum "$CERT_DIR/fullchain.pem" | head -c 64)
     
     # CALCULATE REMOTE HASH:
     # Use our SSH command builder and run sha256sum on remote host
     # 2>/dev/null suppresses error messages
     # || echo "none" provides fallback if command fails
-    local ssh_cmd=$(build_ssh_command "$host" "$port" "sha256sum $CERT_DIR/fullchain.pem 2>/dev/null | cut -d' ' -f1")
+    local ssh_cmd=$(build_ssh_command "$host" "$port" "sha256sum $CERT_DIR/fullchain.pem 2>/dev/null | head -c 64")
     local remote_hash=$(eval "$ssh_cmd" || echo "none")
     
     # COMPARISON: Return true (0) if hashes are different, false (1) if same
@@ -369,6 +371,8 @@ deploy_to_host() {
     # DRY RUN MODE: Show what would be done without doing it
     if [[ "$DRY_RUN" == true ]]; then
         log "Would deploy certificates to $host using: rsync -aL -e '$rsync_ssh' '$CERT_DIR/' 'root@$host.$DOMAIN:$CERT_DIR/'"
+        # Track this host as deployed for dry-run service restart simulation
+        DEPLOYED_HOSTS+=("$host")
         return 0
     fi
     
@@ -382,6 +386,8 @@ deploy_to_host() {
     fi
     
     log "Successfully deployed certificates to $host"
+    # Track this host as having certificates deployed
+    DEPLOYED_HOSTS+=("$host")
     return $ERR_SUCCESS  # Return success
 }
 
@@ -397,6 +403,12 @@ restart_services() {
         return 0
     fi
     
+    # Check if any hosts had certificates deployed
+    if [[ ${#DEPLOYED_HOSTS[@]} -eq 0 ]]; then
+        log "No certificates were deployed, skipping service restarts"
+        return 0
+    fi
+    
     # ARRAY ITERATION: Process each host configuration
     for host_config in "${HOST_SERVICES[@]}"; do
         # STRING SPLITTING: IFS (Internal Field Separator) controls how strings are split
@@ -405,6 +417,21 @@ restart_services() {
         # This splits "host:port:service1,service2" into separate variables
         IFS=':' read -r host port services <<< "$host_config"
         
+        # CHECK IF THIS HOST HAD CERTIFICATES DEPLOYED:
+        # Only restart services on hosts where certificates were actually deployed
+        local host_deployed=false
+        for deployed_host in "${DEPLOYED_HOSTS[@]}"; do
+            if [[ "$deployed_host" == "$host" ]]; then
+                host_deployed=true
+                break
+            fi
+        done
+        
+        if [[ "$host_deployed" == false ]]; then
+            log "Skipping service restart on $host (certificates not deployed)"
+            continue
+        fi
+        
         if [[ "$DRY_RUN" == true ]]; then
             log "Would restart services on $host:$port - $services"
             continue  # Skip to next iteration of loop
@@ -412,17 +439,17 @@ restart_services() {
         
         log "Restarting services on $host: $services"
         
-        # BUILD SYSTEMCTL COMMAND:
-        # Create a compound command to reload multiple services
+        # BUILD SYSTEMCTL COMMAND WITH FALLBACK:
+        # Try reload first, then restart if reload fails
         local service_cmd=""
         
         # SPLIT SERVICES: Convert comma-separated services into array
         # -a flag makes service_array an indexed array
         IFS=',' read -ra service_array <<< "$services"
         
-        # BUILD COMMAND STRING: Create "systemctl reload service1 && systemctl reload service2"
+        # BUILD COMMAND STRING: Try reload, fallback to restart
         for service in "${service_array[@]}"; do
-            service_cmd+="systemctl reload $service && "
+            service_cmd+="(systemctl reload $service || systemctl restart $service) && "
         done
         
         # STRING MANIPULATION: Remove trailing " && "
@@ -555,6 +582,7 @@ generate_service_certificates() {
             # 755 = owner: read/write/execute, group/others: read/execute
             chmod 755 "$CERT_DIR/plex-certificate.pfx"
             log "Generated Plex certificate"
+            LOCAL_CERT_CHANGED=true
         fi
     fi
     
@@ -577,6 +605,7 @@ generate_service_certificates() {
                 cat "$CERT_DIR/privkey.pem" "$CERT_DIR/fullchain.pem" > "$CERT_DIR/znc.pem"
             fi
             log "Generated ZNC certificate"
+            LOCAL_CERT_CHANGED=true
         fi
     fi
 }
@@ -846,15 +875,19 @@ main() {
         secure_cert_permissions
         
         # RELOAD LOCAL NGINX:
-        # Restart the local nginx service to pick up new certificates
-        log "Reloading local nginx"
-        if [[ "$DRY_RUN" == true ]]; then
-            log "Would reload local nginx"
+        # Only reload nginx if certificates have changed
+        if [[ "$LOCAL_CERT_CHANGED" == true ]]; then
+            log "Reloading local nginx"
+            if [[ "$DRY_RUN" == true ]]; then
+                log "Would reload local nginx"
+            else
+                # SYSTEMCTL: System service control command
+                # reload is gentler than restart - reloads config without dropping connections
+                # 2>&1 | logger redirects output to system log
+                systemctl reload nginx 2>&1 | logger -t cert-spreader
+            fi
         else
-            # SYSTEMCTL: System service control command
-            # reload is gentler than restart - reloads config without dropping connections
-            # 2>&1 | logger redirects output to system log
-            systemctl reload nginx 2>&1 | logger -t cert-spreader
+            log "Skipping local nginx reload (certificates unchanged)"
         fi
         
         # BACKUP OPERATIONS:
@@ -886,6 +919,11 @@ main() {
                 failed_hosts+=("$host")
             fi
         done
+        
+        # Set local cert changed flag if any hosts had certificates deployed
+        if [[ ${#DEPLOYED_HOSTS[@]} -gt 0 ]]; then
+            LOCAL_CERT_CHANGED=true
+        fi
         
         # ERROR HANDLING FOR FAILED DEPLOYMENTS:
         if [[ ${#failed_hosts[@]} -gt 0 ]]; then
