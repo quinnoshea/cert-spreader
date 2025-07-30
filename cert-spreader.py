@@ -55,6 +55,10 @@ class Config:
     znc_dhparam_file: str = ""
     ssl_backup_dir: str = "/backup/ssl"
     nginx_backup_dir: str = "/backup/nginx"
+    # File permission configuration
+    file_permissions: str = "644"        # Default permissions for certificate files
+    privkey_permissions: str = "600"     # More restrictive permissions for private key
+    directory_permissions: str = "755"   # Directory permissions
 
 
 class CertSpreader:
@@ -149,6 +153,9 @@ class CertSpreader:
             echo "ZNC_DHPARAM_FILE=${{ZNC_DHPARAM_FILE:-}}"
             echo "SSL_BACKUP_DIR=${{SSL_BACKUP_DIR:-/backup/ssl}}"
             echo "NGINX_BACKUP_DIR=${{NGINX_BACKUP_DIR:-/backup/nginx}}"
+            echo "FILE_PERMISSIONS=${{FILE_PERMISSIONS:-644}}"
+            echo "PRIVKEY_PERMISSIONS=${{PRIVKEY_PERMISSIONS:-600}}"
+            echo "DIRECTORY_PERMISSIONS=${{DIRECTORY_PERMISSIONS:-755}}"
             '''
             
             result = subprocess.run(['bash', '-c', bash_script], 
@@ -186,6 +193,11 @@ class CertSpreader:
         self.config.znc_cert_enabled = config_vars.get('ZNC_CERT_ENABLED', 'false').lower() == 'true'
         self.config.plex_cert_password = config_vars.get('PLEX_CERT_PASSWORD', 'PASSWORD')
         self.config.znc_dhparam_file = config_vars.get('ZNC_DHPARAM_FILE', '')
+        
+        # Parse permission configuration
+        self.config.file_permissions = config_vars.get('FILE_PERMISSIONS', '644')
+        self.config.privkey_permissions = config_vars.get('PRIVKEY_PERMISSIONS', '600')
+        self.config.directory_permissions = config_vars.get('DIRECTORY_PERMISSIONS', '755')
         
         # Parse arrays from extracted bash arrays
         self.config.host_services = arrays.get('HOST_SERVICES', [])
@@ -518,26 +530,26 @@ class CertSpreader:
             stat_info = os.stat(self.config.cert_dir)
             current_perms = oct(stat_info.st_mode)[-3:]
             
-            if current_perms != '755':
+            if current_perms != self.config.directory_permissions:
                 if self.dry_run:
-                    self.log(f"Would secure directory: {self.config.cert_dir} (755, root:root)")
+                    self.log(f"Would secure directory: {self.config.cert_dir} ({self.config.directory_permissions}, root:root)")
                 else:
                     try:
-                        os.chmod(self.config.cert_dir, 0o755)
+                        os.chmod(self.config.cert_dir, int(self.config.directory_permissions, 8))
                         # Note: chown requires root privileges, so we'll skip it in Python for now
-                        self.log(f"Secured directory: {self.config.cert_dir} (755)")
+                        self.log(f"Secured directory: {self.config.cert_dir} ({self.config.directory_permissions})")
                     except OSError as e:
                         self.log(f"WARNING: Failed to secure directory permissions: {e}")
                 changes_needed = True
             else:
-                self.log(f"Directory permissions OK: {self.config.cert_dir} (755)")
+                self.log(f"Directory permissions OK: {self.config.cert_dir} ({self.config.directory_permissions})")
         
-        # Secure certificate files
+        # Secure certificate files with configurable permissions
         cert_files = {
-            'privkey.pem': '644',
-            'cert.pem': '644', 
-            'fullchain.pem': '644',
-            'chain.pem': '644'
+            'privkey.pem': self.config.privkey_permissions,
+            'cert.pem': self.config.file_permissions, 
+            'fullchain.pem': self.config.file_permissions,
+            'chain.pem': self.config.file_permissions
         }
         
         for filename, expected_perms in cert_files.items():

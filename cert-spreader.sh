@@ -211,6 +211,12 @@ load_config() {
     PLEX_CERT_ENABLED="${PLEX_CERT_ENABLED:-false}"
     ZNC_CERT_ENABLED="${ZNC_CERT_ENABLED:-false}"
     
+    # FILE PERMISSION DEFAULTS:
+    # These can be overridden in the configuration file
+    FILE_PERMISSIONS="${FILE_PERMISSIONS:-644}"          # Default permissions for certificate files
+    PRIVKEY_PERMISSIONS="${PRIVKEY_PERMISSIONS:-600}"    # More restrictive permissions for private key
+    DIRECTORY_PERMISSIONS="${DIRECTORY_PERMISSIONS:-755}" # Directory permissions
+    
     # ENHANCED CONFIGURATION VALIDATION
     validate_config
 }
@@ -644,12 +650,12 @@ check_permissions() {
 # More flexible than hardcoded arrays - adapts to different certificate setups
 discover_and_secure_cert_files() {
     # Define standard certificate file patterns and their permissions
-    # Using associative array for better organization
+    # Using associative array with configurable permissions
     declare -A cert_file_perms=(
-        ["privkey.pem"]="644"      # Private key (NOTE: Usually 600, but this app needs 644)
-        ["cert.pem"]="644"         # Certificate 
-        ["fullchain.pem"]="644"    # Full certificate chain
-        ["chain.pem"]="644"        # Intermediate chain (optional)
+        ["privkey.pem"]="$PRIVKEY_PERMISSIONS"     # Private key with configurable permissions
+        ["cert.pem"]="$FILE_PERMISSIONS"           # Certificate 
+        ["fullchain.pem"]="$FILE_PERMISSIONS"      # Full certificate chain
+        ["chain.pem"]="$FILE_PERMISSIONS"          # Intermediate chain (optional)
     )
     
     # Process each certificate file type
@@ -686,9 +692,9 @@ discover_and_secure_cert_files() {
         [[ -n "${cert_file_perms[$filename]:-}" ]] && continue
         
         # Default permissions for discovered .pem files
-        local default_perms="644"
+        local default_perms="$FILE_PERMISSIONS"
         if [[ "$filename" == *"key"* || "$filename" == *"private"* ]]; then
-            default_perms="644"  # Keep consistent with privkey.pem
+            default_perms="$PRIVKEY_PERMISSIONS"  # Use private key permissions for key files
         fi
         
         if ! check_permissions "$pem_file" "$default_perms" "root:root"; then
@@ -723,20 +729,20 @@ secure_cert_permissions() {
     # First, ensure the certificate directory itself has correct permissions
     if [[ -d "$CERT_DIR" ]]; then
         # Use our consolidated permissions function to check directory permissions
-        if ! check_permissions "$CERT_DIR" "755" "root:root"; then
+        if ! check_permissions "$CERT_DIR" "$DIRECTORY_PERMISSIONS" "root:root"; then
             if [[ "$DRY_RUN" == true ]]; then
-                log "Would secure directory: $CERT_DIR (755, root:root)"
+                log "Would secure directory: $CERT_DIR ($DIRECTORY_PERMISSIONS, root:root)"
             else
                 # PERMISSION COMMANDS:
                 # chmod changes file/directory permissions
                 # chown changes file/directory ownership
-                chmod 755 "$CERT_DIR"      # rwxr-xr-x (owner: read/write/execute, others: read/execute)
+                chmod "$DIRECTORY_PERMISSIONS" "$CERT_DIR"
                 chown root:root "$CERT_DIR"  # Set owner to root user, root group
-                log "Secured directory: $CERT_DIR (755, root:root)"
+                log "Secured directory: $CERT_DIR ($DIRECTORY_PERMISSIONS, root:root)"
             fi
             changes_needed=true
         else
-            log "Directory permissions OK: $CERT_DIR (755, root:root)"
+            log "Directory permissions OK: $CERT_DIR ($DIRECTORY_PERMISSIONS, root:root)"
         fi
     else
         log "WARNING: Certificate directory does not exist: $CERT_DIR"
@@ -751,33 +757,33 @@ secure_cert_permissions() {
     # SECURE SERVICE-SPECIFIC CERTIFICATES:
     # Handle Plex certificate if enabled
     if [[ "${PLEX_CERT_ENABLED:-false}" == true && -f "$CERT_DIR/plex-certificate.pfx" ]]; then
-        if ! check_permissions "$CERT_DIR/plex-certificate.pfx" "644" "root:root"; then
+        if ! check_permissions "$CERT_DIR/plex-certificate.pfx" "$FILE_PERMISSIONS" "root:root"; then
             if [[ "$DRY_RUN" == true ]]; then
-                log "Would secure Plex certificate: plex-certificate.pfx (644, root:root)"
+                log "Would secure Plex certificate: plex-certificate.pfx ($FILE_PERMISSIONS, root:root)"
             else
-                chmod 644 "$CERT_DIR/plex-certificate.pfx"
+                chmod "$FILE_PERMISSIONS" "$CERT_DIR/plex-certificate.pfx"
                 chown root:root "$CERT_DIR/plex-certificate.pfx"
-                log "Secured Plex certificate: plex-certificate.pfx (644, root:root)"
+                log "Secured Plex certificate: plex-certificate.pfx ($FILE_PERMISSIONS, root:root)"
             fi
             changes_needed=true
         else
-            log "Plex certificate permissions OK: plex-certificate.pfx (644, root:root)"
+            log "Plex certificate permissions OK: plex-certificate.pfx ($FILE_PERMISSIONS, root:root)"
         fi
     fi
     
-    # Handle ZNC certificate if enabled (more restrictive permissions for ZNC)
+    # Handle ZNC certificate if enabled
     if [[ "${ZNC_CERT_ENABLED:-false}" == true && -f "$CERT_DIR/znc.pem" ]]; then
-        if ! check_permissions "$CERT_DIR/znc.pem" "644" "root:root"; then
+        if ! check_permissions "$CERT_DIR/znc.pem" "$FILE_PERMISSIONS" "root:root"; then
             if [[ "$DRY_RUN" == true ]]; then
-                log "Would secure ZNC certificate: znc.pem (644, root:root)"
+                log "Would secure ZNC certificate: znc.pem ($FILE_PERMISSIONS, root:root)"
             else
-                chmod 644 "$CERT_DIR/znc.pem"    # 644 = rw-r--r-- (owner read/write, group/others read)
+                chmod "$FILE_PERMISSIONS" "$CERT_DIR/znc.pem"
                 chown root:root "$CERT_DIR/znc.pem"
-                log "Secured ZNC certificate: znc.pem (644, root:root)"
+                log "Secured ZNC certificate: znc.pem ($FILE_PERMISSIONS, root:root)"
             fi
             changes_needed=true
         else
-            log "ZNC certificate permissions OK: znc.pem (644, root:root)"
+            log "ZNC certificate permissions OK: znc.pem ($FILE_PERMISSIONS, root:root)"
         fi
     fi
     

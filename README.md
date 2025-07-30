@@ -1,20 +1,30 @@
 # Certificate Spreader
 
-A simplified bash script for securely deploying Let's Encrypt SSL certificates to multiple hosts and services. This tool replaces complex shell scripts with a maintainable, configurable solution.
+A comprehensive tool for securely deploying Let's Encrypt SSL certificates to multiple hosts and services. Available in both Bash and Python implementations with identical functionality.
 
 ## 🔒 Security Features
 
 - **Configuration-based**: Keeps sensitive data separate from code
 - **SSH Key Authentication**: Uses SSH keys for secure, passwordless deployment
 - **Idempotency**: Only deploys when certificates have actually changed
+- **Service Restart Intelligence**: Tries reload first, falls back to restart if needed
+- **Configurable Permissions**: Customizable file and directory permissions
+- **Certificate Change Tracking**: Only restarts services on hosts where certificates changed
 - **Comprehensive .gitignore**: Prevents accidental commit of sensitive files
 
 ## 📋 Prerequisites
 
+### For Bash Version (`cert-spreader.sh`)
 - Bash 4.0 or higher
 - SSH access to target hosts with key-based authentication
 - Valid SSL certificates (Let's Encrypt recommended)
-- Standard Unix tools: `rsync`, `ssh`, `openssl`, `curl`, `sha256sum`
+- Standard Unix tools: `rsync`, `ssh`, `openssl`, `curl`, `sha256sum`, `head`, `awk`
+
+### For Python Version (`cert-spreader.py`)
+- Python 3.7+ (no external dependencies - uses only standard library)
+- SSH access to target hosts with key-based authentication
+- Valid SSL certificates (Let's Encrypt recommended)
+- Standard Unix tools: `rsync`, `ssh`, `openssl`
 
 ## 🚀 Quick Setup
 
@@ -42,61 +52,76 @@ ssh-copy-id -i /root/.ssh/cert_spreader_key root@hostname.yourdomain.com
 ### 3. Test the Configuration
 
 ```bash
-# Make script executable
+# Make scripts executable
 chmod +x cert-spreader.sh
+chmod +x cert-spreader.py
 
-# ALWAYS test first with dry-run
+# ALWAYS test first with dry-run (choose your preferred version)
 ./cert-spreader.sh --dry-run
+# OR
+./cert-spreader.py --dry-run
 ```
 
 ## 🔧 Usage
+
+Both versions support identical command-line interfaces:
 
 ### Basic Commands
 
 ```bash
 # Normal deployment (deploy certs + restart services + update Proxmox)
 ./cert-spreader.sh
+./cert-spreader.py
 
 # Dry run (see what would happen without making changes)  
 ./cert-spreader.sh --dry-run
+./cert-spreader.py --dry-run
 
 # Deploy certificates only (skip service restarts)
 ./cert-spreader.sh --cert-only
+./cert-spreader.py --cert-only
 
 # Restart services only (skip certificate deployment)
 ./cert-spreader.sh --services-only
+./cert-spreader.py --services-only
 
 # Update Proxmox certificates only (skip everything else)
 ./cert-spreader.sh --proxmox-only
+./cert-spreader.py --proxmox-only
 
 # Fix certificate file permissions only (skip everything else)
 ./cert-spreader.sh --permissions-fix
+./cert-spreader.py --permissions-fix
 
 # Use custom configuration file
 ./cert-spreader.sh custom.conf --dry-run
+./cert-spreader.py custom.conf --dry-run
 
 # Get help
 ./cert-spreader.sh --help
+./cert-spreader.py --help
 ```
 
 ### Execution Modes
 
-The script supports several execution modes for different scenarios:
+The scripts support several execution modes for different scenarios:
 
 - **Default mode**: Deploys certificates to hosts, restarts services, and updates Proxmox
 - **`--cert-only`**: Only deploys certificates to hosts, skips service restarts and Proxmox updates
-- **`--services-only`**: Only restarts services on hosts, skips certificate deployment and Proxmox updates  
+- **`--services-only`**: Only restarts services on hosts that had certificates deployed, skips certificate deployment and Proxmox updates  
 - **`--proxmox-only`**: Only updates Proxmox certificates, skips everything else
 - **`--permissions-fix`**: Only fixes certificate file permissions, skips everything else
 - **`--dry-run`**: Can be combined with any mode to show what would happen without making changes
 
 **Note**: The selective execution flags (`--cert-only`, `--services-only`, `--proxmox-only`, `--permissions-fix`) are mutually exclusive.
 
-**Common use cases:**
-- `--proxmox-only`: When you only need to update Proxmox after manual certificate changes, or if host deployments failed but Proxmox is still reachable
-- `--cert-only`: When testing certificate deployment without affecting running services
-- `--services-only`: When certificates are already deployed but services need to be restarted
-- `--permissions-fix`: When certificate permissions have been changed manually or after system maintenance, ensuring proper Let's Encrypt security standards
+### Intelligence Features
+
+**Service Restart with Fallback**: The scripts now intelligently try `systemctl reload` first, and automatically fall back to `systemctl restart` if reload is not supported by the service.
+
+**Conditional Service Restarts**: Services are only restarted on hosts where certificates were actually deployed, avoiding unnecessary service interruptions.
+
+**Certificate Change Detection**: Uses SHA-256 hash comparison to detect certificate changes and skip deployment when certificates are unchanged.
 
 ### Typical Workflow
 
@@ -111,6 +136,8 @@ Add as a post-renewal hook in your certbot configuration:
 ```bash
 # Add to /etc/letsencrypt/renewal/yourdomain.com.conf
 post_hook = /path/to/cert-spreader.sh
+# OR
+post_hook = /path/to/cert-spreader.py
 
 # Or run manually after renewal
 certbot renew && /path/to/cert-spreader.sh
@@ -120,16 +147,12 @@ certbot renew && /path/to/cert-spreader.sh
 
 ```
 cert-spreader/
-├── cert-spreader.sh           # Main deployment script
+├── cert-spreader.sh           # Main Bash implementation
+├── cert-spreader.py           # Main Python implementation  
+├── test-cert-spreader.sh      # Test suite for Bash version
 ├── config.conf                # Your actual config (NOT in git)
 ├── config.example.conf        # Configuration template (safe to commit)
-├── python/                    # Previous Python implementation
-│   ├── cert-spreader.py
-│   ├── config.yml
-│   └── ...
-├── originals/                 # Original shell scripts (NOT in git)
-│   ├── cert-deploy.sh
-│   └── plex-cert.sh
+├── secrets.env.example        # Environment variable template
 ├── .gitignore                 # Protects sensitive files  
 └── README.md                  # This file
 ```
@@ -151,7 +174,7 @@ SSH_OPTS="-o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new"
 HOSTS="web-server mail-server app-server"
 
 # Host-specific services
-declare -a HOST_SERVICES=(
+HOST_SERVICES=(
     "web-server:22:nginx,apache2"
     "mail-server:22:postfix,dovecot"
     "app-server:2222:myapp"
@@ -160,10 +183,15 @@ declare -a HOST_SERVICES=(
 # Proxmox nodes (optional)
 PROXMOX_USER="user@pve!tokenid"
 PROXMOX_TOKEN="your-api-token"
-declare -a PROXMOX_NODES=(
+PROXMOX_NODES=(
     "proxmox01"
     "proxmox02"
 )
+
+# File permissions (NEW: configurable permissions)
+FILE_PERMISSIONS=644                 # Default permissions for certificate files
+PRIVKEY_PERMISSIONS=600              # More restrictive permissions for private keys
+DIRECTORY_PERMISSIONS=755            # Directory permissions
 ```
 
 ### Host Services Format
@@ -172,11 +200,11 @@ The `HOST_SERVICES` array uses the format: `"hostname:port:service1,service2"`
 
 - **hostname**: Must match entries in `HOSTS`
 - **port**: SSH port (22 is default)
-- **services**: Comma-separated list of systemd services to reload
+- **services**: Comma-separated list of systemd services to reload/restart
 
 ### Service Certificate Generation
 
-The script can generate specialized certificate formats:
+The scripts can generate specialized certificate formats:
 
 ```bash
 # Enable Plex PKCS12 certificate
@@ -188,26 +216,41 @@ ZNC_CERT_ENABLED=true
 ZNC_DHPARAM_FILE="/etc/nginx/ssl/dhparam.pem"
 ```
 
-### Certificate Permissions Security
+### Configurable Certificate Permissions
 
-The script automatically secures certificate permissions following Let's Encrypt best practices:
+**NEW FEATURE**: File permissions are now configurable through the configuration file:
 
-**Directory Permissions:**
+```bash
+# File permissions configuration
+FILE_PERMISSIONS=644                 # Default permissions for certificate files (owner: read/write, group/others: read)
+PRIVKEY_PERMISSIONS=600              # More restrictive permissions for private keys (owner: read/write only)
+DIRECTORY_PERMISSIONS=755            # Directory permissions (owner: read/write/execute, group/others: read/execute)
+```
+
+**Default Security Model:**
 - Certificate directory: `755` (drwxr-xr-x, root:root)
+- Private keys (`privkey.pem`): `600` (-rw-------, root:root) 
+- Other certificates (`cert.pem`, `fullchain.pem`, etc.): `644` (-rw-r--r--, root:root)
+- Service certificates (Plex, ZNC): Use `FILE_PERMISSIONS` setting
 
-**File Permissions:**
-- Private keys (`privkey.pem`): `600` (-rw-------, root:root)
-- Certificates (`cert.pem`, `fullchain.pem`, `chain.pem`): `644` (-rw-r--r--, root:root)
-- Plex certificate (`plex-certificate.pfx`): `644` (-rw-r--r--, root:root) 
-- ZNC certificate (`znc.pem`): `644` (-rw-r--r--, root:root)
+**Customization Examples:**
+```bash
+# More restrictive setup (all files private)
+FILE_PERMISSIONS=600
+PRIVKEY_PERMISSIONS=600
+DIRECTORY_PERMISSIONS=700
 
-**Idempotency:** The script only changes permissions when needed, logging "permissions OK" when they're already correct.
+# More permissive setup (group readable)
+FILE_PERMISSIONS=644
+PRIVKEY_PERMISSIONS=640
+DIRECTORY_PERMISSIONS=755
+```
 
-**Manual fix:** Use `./cert-spreader.sh --permissions-fix` to fix permissions without doing anything else.
+**Manual Permission Fix:** Use `--permissions-fix` to fix permissions without doing anything else.
 
 ### Alternative: Environment Variables
 
-While the script currently uses `config.conf`, you can use environment variables as an alternative or supplement for sensitive values:
+While the scripts currently use `config.conf`, you can use environment variables as an alternative or supplement for sensitive values:
 
 **Option 1: Hybrid Approach (Recommended)**
 Keep `config.conf` for host lists and complex settings, but override sensitive values:
@@ -216,6 +259,7 @@ Keep `config.conf` for host lists and complex settings, but override sensitive v
 # Set sensitive values via environment
 export PROXMOX_TOKEN="your-real-token"
 export PLEX_CERT_PASSWORD="your-real-password"
+export FILE_PERMISSIONS="600"  # Override default permissions
 
 # Run script normally
 ./cert-spreader.sh
@@ -235,21 +279,30 @@ if [[ -f "secrets.env" ]]; then
 fi
 ```
 
-**Option 3: Wrapper Script**
-Create a wrapper that loads environment variables:
+## 🔄 Bash vs Python Versions
 
-```bash
-#!/bin/bash
-# cert-spreader-wrapper.sh
-source secrets.env
-./cert-spreader.sh "$@"
-```
+| Feature | Bash Version | Python Version |
+|---------|-------------|----------------|
+| **Dependencies** | Standard Unix tools | Python 3.7+ only |
+| **Performance** | Very fast | Fast |
+| **Error Handling** | Good | Excellent |
+| **Debugging** | Standard bash debugging | Rich exception info |
+| **Configuration** | Bash source files | Bash source files (same format) |
+| **Portability** | Unix/Linux only | Cross-platform |
+| **Type Safety** | No | Yes (with type hints) |
+| **Maintainability** | Good | Excellent |
 
-**Benefits of Environment Variables:**
-- ✅ Automatically cleared when terminal session ends
-- ✅ Can be set per-server without changing code
-- ✅ Not stored in files that could be accidentally shared
-- ⚠️ May appear in process lists temporarily
+**Choose Bash if:**
+- You prefer shell scripting
+- Minimal dependencies are critical
+- You need maximum performance
+- Your environment is Unix/Linux only
+
+**Choose Python if:**
+- You prefer structured programming
+- You want better error messages
+- You need cross-platform compatibility
+- You plan to extend functionality
 
 ## 🔒 Security Best Practices
 
@@ -275,16 +328,18 @@ source secrets.env
 
 3. **Use the example file**: Share `config.example.conf`, never `config.conf`
 
+4. **Configure permissions appropriately**: Use the permission settings to match your security requirements
+
 ## 🚨 What Gets Ignored by Git
 
 The `.gitignore` file prevents these sensitive files from being committed:
 
 - `config.conf` (your real configuration)
-- `originals/` (original scripts with secrets)
-- `python/config.yml` (Python version config)
+- `secrets.env` (environment variables)
 - Certificate files (`*.pem`, `*.pfx`, `*.key`)
 - Log files (`*.log`)
 - Backup and temporary files
+- Test artifacts
 
 ## 🔧 Troubleshooting
 
@@ -301,14 +356,19 @@ The `.gitignore` file prevents these sensitive files from being committed:
    - Check certificate hashes match between local and remote
 
 3. **Service restart failures**:
+   - **NEW**: Scripts now automatically try reload first, then restart
    - Verify service names in configuration
-   - Check if services support `reload` vs need `restart`
-   - Test manually: `ssh host 'systemctl reload nginx'`
+   - Test manually: `ssh host 'systemctl reload nginx || systemctl restart nginx'`
 
 4. **Proxmox API errors**:
    - Verify API token permissions in Proxmox
    - Check token format: `user@realm!tokenname`
    - Test connectivity: `curl -k https://proxmox.domain.com:8006`
+
+5. **Permission issues**:
+   - Use `--permissions-fix` to fix permissions without deployment
+   - Check if your permission settings match your security requirements
+   - Verify script is running as root for chown operations
 
 ### Debug Commands
 
@@ -319,32 +379,73 @@ ssh -i /root/.ssh/cert_spreader_key root@hostname.domain.com 'echo "Connection O
 # Check certificate validity
 openssl x509 -in /etc/letsencrypt/live/domain/cert.pem -text -noout | grep -A2 Validity
 
-# Verify certificate hash
-sha256sum /etc/letsencrypt/live/domain/fullchain.pem
+# Verify certificate hash (new method)
+sha256sum /etc/letsencrypt/live/domain/fullchain.pem | head -c 64
 
-# Test service reload
-ssh hostname.domain.com 'systemctl reload nginx'
+# Test service reload with fallback
+ssh hostname.domain.com 'systemctl reload nginx || systemctl restart nginx'
+
+# Check current permissions
+ls -la /etc/letsencrypt/live/domain/
 ```
 
-## 📝 Migration from Complex Scripts
+### Testing
 
-If you're migrating from the previous Python version or complex shell scripts:
+The Bash version includes a comprehensive test suite:
+
+```bash
+# Run all tests
+./test-cert-spreader.sh
+
+# Setup test environment for manual testing
+./test-cert-spreader.sh --setup
+
+# Clean up test environment
+./test-cert-spreader.sh --cleanup
+```
+
+## 📝 Migration Guide
+
+### From Previous Versions
+
+If you're upgrading from an earlier version:
+
+1. **Add permission configuration**: Add the new permission variables to your `config.conf`
+2. **Test thoroughly**: The new service restart logic may behave differently
+3. **Update monitoring**: Services will only restart when certificates actually change
+
+### From Complex Scripts
+
+If you're migrating from other certificate deployment solutions:
 
 1. **Extract host lists**: Copy your host definitions to `HOSTS` variable
 2. **Map services**: Convert service configurations to `HOST_SERVICES` format  
-3. **Preserve working commands**: SSH and curl commands work the same way
+3. **Configure permissions**: Set appropriate permission levels for your environment
 4. **Test thoroughly**: Use `--dry-run` extensively during migration
 5. **Simplify gradually**: Start with basic functionality, add features as needed
 
 ## 🎯 Design Philosophy
 
-This script follows the principle of **simplicity over complexity**:
+This tool follows the principle of **simplicity with intelligence**:
 
 - **Linear execution**: Easy to understand and debug
-- **Minimal dependencies**: Uses standard Unix tools
-- **Clear logging**: Simple, readable log messages
+- **Minimal dependencies**: Uses standard Unix tools and Python standard library
+- **Clear logging**: Simple, readable log messages with dry-run support
 - **Fail-fast**: Stops on errors rather than continuing with undefined state
-- **Idempotent**: Safe to run multiple times
+- **Idempotent**: Safe to run multiple times, only changes what's needed
+- **Intelligent**: Tries reload before restart, only acts on changed certificates
+- **Configurable**: Flexible permissions and behavior without complexity
+
+## 🔄 Recent Improvements
+
+### Version 2.0 Features
+
+- **Service Restart Intelligence**: Automatically tries reload first, falls back to restart
+- **Conditional Restarts**: Only restarts services on hosts where certificates changed
+- **Configurable Permissions**: File and directory permissions are now configurable
+- **Python Implementation**: Complete Python version with identical functionality
+- **Better Hash Handling**: Improved certificate change detection (fixed quote escaping issues)
+- **Enhanced Testing**: Comprehensive test suite for validation
 
 ## 🤝 Contributing
 
@@ -352,6 +453,7 @@ This script follows the principle of **simplicity over complexity**:
 2. **Suggest improvements**: Ideas for better security or functionality  
 3. **Test thoroughly**: Always use `--dry-run` when testing changes
 4. **Keep it simple**: Resist the urge to add complexity
+5. **Update tests**: Ensure test suite covers new functionality
 
 ## 📄 License
 
@@ -361,4 +463,6 @@ Private repository - internal use only.
 
 **⚠️ Security Reminder**: Never commit real hostnames, tokens, or private keys to any repository, even private ones!
 
-**💡 Pro Tip**: Always run `./cert-spreader.sh --dry-run` first to see what the script will do before making actual changes.
+**💡 Pro Tip**: Always run with `--dry-run` first to see what the script will do before making actual changes.
+
+**🔧 New Feature**: Configure file permissions to match your security requirements using the new permission settings!
