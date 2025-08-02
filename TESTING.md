@@ -118,7 +118,6 @@ python3 -m unittest test-cert-spreader.TestOwnerGroupFunctionality -v
 - Function sourcing capability
 - Custom certificate functions (`generate_service_certificates`, `generate_pkcs12_certificate`, `generate_concatenated_certificate`)
 - Certificate configuration parsing
-- Backward compatibility with legacy settings
 
 ### Python Test Categories (`test-cert-spreader.py`)
 
@@ -164,7 +163,6 @@ python3 -m unittest test-cert-spreader.TestOwnerGroupFunctionality -v
 - Concatenated certificate generation without DH parameters
 - Array-based certificate configuration parsing
 - Individual setting configuration parsing
-- Backward compatibility with legacy PLEX_CERT_* and ZNC_CERT_* settings
 - Multiple certificate format support
 - Certificate filename customization
 
@@ -220,11 +218,6 @@ CUSTOM_CERTIFICATES=(
     "concatenated::test-simple.pem"
 )
 
-# Legacy settings for backward compatibility testing
-PLEX_CERT_ENABLED=true
-PLEX_CERT_PASSWORD="legacy-test-password"
-ZNC_CERT_ENABLED=true
-ZNC_DHPARAM_FILE="/tmp/test-dhparam.pem"
 ```
 
 ### Python Test Configuration
@@ -253,11 +246,6 @@ CONCATENATED_ENABLED=true
 CONCATENATED_DHPARAM_FILE="/tmp/individual-dhparam.pem"
 CONCATENATED_FILENAME="individual-test.pem"
 
-# Legacy settings for backward compatibility testing
-PLEX_CERT_ENABLED=true
-PLEX_CERT_PASSWORD="testpass"
-ZNC_CERT_ENABLED=true
-ZNC_DHPARAM_FILE="/tmp/znc-dhparam.pem"
 
 # File ownership testing
 FILE_OWNER=nginx
@@ -491,18 +479,6 @@ CONCATENATED_DHPARAM_FILE="/etc/ssl/dhparam.pem"
 CONCATENATED_FILENAME="custom-combined.pem"
 ```
 
-#### Backward Compatibility Testing
-Test that legacy settings still function:
-
-```bash
-# Legacy Plex settings should still work
-PLEX_CERT_ENABLED=true
-PLEX_CERT_PASSWORD="legacy-password"
-
-# Legacy ZNC settings should still work  
-ZNC_CERT_ENABLED=true
-ZNC_DHPARAM_FILE="/etc/ssl/dhparam.pem"
-```
 
 ### Certificate Generation Test Scenarios
 
@@ -571,8 +547,6 @@ PKCS12_ENABLED=true
 PKCS12_FILENAME="additional.pfx"
 CONCATENATED_ENABLED=true
 CONCATENATED_FILENAME="additional.pem"
-PLEX_CERT_ENABLED=true    # Legacy setting
-ZNC_CERT_ENABLED=true     # Legacy setting
 ```
 
 #### Performance Testing  
@@ -590,4 +564,3 @@ When adding new features, ensure you test in both implementations:
 4. **Test custom certificate functionality** with various certificate configurations
 5. **Update this documentation** with any new test categories
 6. **Verify both implementations behave identically**
-7. **Test backward compatibility** with legacy configurations

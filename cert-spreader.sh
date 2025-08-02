@@ -576,22 +576,13 @@ generate_service_certificates() {
         done
     fi
     
-    # Process individual configuration settings (backward compatibility + new format)
+    # Process individual configuration settings
     if [[ "${PKCS12_ENABLED:-false}" == true ]]; then
         generate_pkcs12_certificate "${PKCS12_FILENAME:-certificate.pfx}" "${PKCS12_PASSWORD:-}"
     fi
     
     if [[ "${CONCATENATED_ENABLED:-false}" == true ]]; then
         generate_concatenated_certificate "${CONCATENATED_FILENAME:-combined.pem}" "${CONCATENATED_DHPARAM_FILE:-}"
-    fi
-    
-    # Backward compatibility: convert old Plex/ZNC settings
-    if [[ "${PLEX_CERT_ENABLED:-false}" == true ]]; then
-        generate_pkcs12_certificate "plex-certificate.pfx" "${PLEX_CERT_PASSWORD:-}"
-    fi
-    
-    if [[ "${ZNC_CERT_ENABLED:-false}" == true ]]; then
-        generate_concatenated_certificate "znc.pem" "${ZNC_DHPARAM_FILE:-}"
     fi
 }
 
@@ -866,14 +857,6 @@ secure_custom_certificates() {
         done
     fi
     
-    # Backward compatibility
-    if [[ "${PLEX_CERT_ENABLED:-false}" == true ]]; then
-        custom_files+=("plex-certificate.pfx")
-    fi
-    
-    if [[ "${ZNC_CERT_ENABLED:-false}" == true ]]; then
-        custom_files+=("znc.pem")
-    fi
     
     # Secure each custom certificate file
     for filename in "${custom_files[@]}"; do

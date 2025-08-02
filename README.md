@@ -241,15 +241,6 @@ CONCATENATED_DHPARAM_FILE="/etc/nginx/ssl/dhparam.pem"  # Optional DH parameters
 CONCATENATED_FILENAME="combined.pem"                    # Custom filename
 ```
 
-#### Backward Compatibility (Legacy Settings)
-
-```bash
-# Legacy Plex and ZNC settings still work
-PLEX_CERT_ENABLED=true
-PLEX_CERT_PASSWORD="your-password"
-ZNC_CERT_ENABLED=true
-ZNC_DHPARAM_FILE="/etc/nginx/ssl/dhparam.pem"
-```
 
 #### Certificate Types Supported
 
@@ -360,7 +351,6 @@ Keep `config.conf` for host lists and complex settings, but override sensitive v
 ```bash
 # Set sensitive values via environment
 export PROXMOX_TOKEN="your-real-token"
-export PLEX_CERT_PASSWORD="your-real-password"
 export FILE_PERMISSIONS="600"  # Override default permissions
 export FILE_OWNER="nginx"      # Override default owner
 export FILE_GROUP="ssl-cert"   # Override default group

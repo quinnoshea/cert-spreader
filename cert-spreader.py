@@ -151,11 +151,6 @@ class CertSpreader:
             echo "CONCATENATED_ENABLED=${{CONCATENATED_ENABLED:-false}}"
             echo "CONCATENATED_DHPARAM_FILE=${{CONCATENATED_DHPARAM_FILE:-}}"
             echo "CONCATENATED_FILENAME=${{CONCATENATED_FILENAME:-combined.pem}}"
-            # Backward compatibility
-            echo "PLEX_CERT_ENABLED=${{PLEX_CERT_ENABLED:-false}}"
-            echo "ZNC_CERT_ENABLED=${{ZNC_CERT_ENABLED:-false}}"
-            echo "PLEX_CERT_PASSWORD=${{PLEX_CERT_PASSWORD:-}}"
-            echo "ZNC_DHPARAM_FILE=${{ZNC_DHPARAM_FILE:-}}"
             echo "FILE_PERMISSIONS=${{FILE_PERMISSIONS:-644}}"
             echo "PRIVKEY_PERMISSIONS=${{PRIVKEY_PERMISSIONS:-600}}"
             echo "DIRECTORY_PERMISSIONS=${{DIRECTORY_PERMISSIONS:-755}}"
@@ -198,16 +193,6 @@ class CertSpreader:
         self.config.concatenated_dhparam_file = config_vars.get('CONCATENATED_DHPARAM_FILE', '')
         self.config.concatenated_filename = config_vars.get('CONCATENATED_FILENAME', 'combined.pem')
         
-        # Backward compatibility: convert old settings to new format
-        if config_vars.get('PLEX_CERT_ENABLED', 'false').lower() == 'true':
-            self.config.pkcs12_enabled = True
-            self.config.pkcs12_password = config_vars.get('PLEX_CERT_PASSWORD', '')
-            self.config.pkcs12_filename = 'plex-certificate.pfx'
-        
-        if config_vars.get('ZNC_CERT_ENABLED', 'false').lower() == 'true':
-            self.config.concatenated_enabled = True
-            self.config.concatenated_dhparam_file = config_vars.get('ZNC_DHPARAM_FILE', '')
-            self.config.concatenated_filename = 'znc.pem'
         
         # Parse permission configuration
         self.config.file_permissions = config_vars.get('FILE_PERMISSIONS', '644')
@@ -344,7 +329,7 @@ class CertSpreader:
         for cert_config in self.config.custom_certificates:
             self._generate_custom_certificate(cert_config)
         
-        # Process individual configuration settings (backward compatibility + new format)
+        # Process individual configuration settings
         if self.config.pkcs12_enabled:
             self._generate_pkcs12_certificate(
                 self.config.pkcs12_filename,
