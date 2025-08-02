@@ -43,10 +43,15 @@ class Config:
     proxmox_nodes: List[str] = field(default_factory=list)
     proxmox_user: str = ""
     proxmox_token: str = ""
-    plex_cert_enabled: bool = False
-    plex_cert_password: str = "PASSWORD"
-    znc_cert_enabled: bool = False
-    znc_dhparam_file: str = ""
+    # Custom certificate generation configuration
+    custom_certificates: List[str] = field(default_factory=list)
+    # Backward compatibility settings
+    pkcs12_enabled: bool = False
+    pkcs12_password: str = ""
+    pkcs12_filename: str = "certificate.pfx"
+    concatenated_enabled: bool = False
+    concatenated_dhparam_file: str = ""
+    concatenated_filename: str = "combined.pem"
     # File permission configuration
     file_permissions: str = "644"        # Default permissions for certificate files
     privkey_permissions: str = "600"     # More restrictive permissions for private key
@@ -140,9 +145,16 @@ class CertSpreader:
             echo "HOSTS=${{HOSTS:-}}"
             echo "PROXMOX_USER=${{PROXMOX_USER:-}}"
             echo "PROXMOX_TOKEN=${{PROXMOX_TOKEN:-}}"
+            echo "PKCS12_ENABLED=${{PKCS12_ENABLED:-false}}"
+            echo "PKCS12_PASSWORD=${{PKCS12_PASSWORD:-}}"
+            echo "PKCS12_FILENAME=${{PKCS12_FILENAME:-certificate.pfx}}"
+            echo "CONCATENATED_ENABLED=${{CONCATENATED_ENABLED:-false}}"
+            echo "CONCATENATED_DHPARAM_FILE=${{CONCATENATED_DHPARAM_FILE:-}}"
+            echo "CONCATENATED_FILENAME=${{CONCATENATED_FILENAME:-combined.pem}}"
+            # Backward compatibility
             echo "PLEX_CERT_ENABLED=${{PLEX_CERT_ENABLED:-false}}"
             echo "ZNC_CERT_ENABLED=${{ZNC_CERT_ENABLED:-false}}"
-            echo "PLEX_CERT_PASSWORD=${{PLEX_CERT_PASSWORD:-PASSWORD}}"
+            echo "PLEX_CERT_PASSWORD=${{PLEX_CERT_PASSWORD:-}}"
             echo "ZNC_DHPARAM_FILE=${{ZNC_DHPARAM_FILE:-}}"
             echo "FILE_PERMISSIONS=${{FILE_PERMISSIONS:-644}}"
             echo "PRIVKEY_PERMISSIONS=${{PRIVKEY_PERMISSIONS:-600}}"
@@ -178,11 +190,24 @@ class CertSpreader:
         self.config.proxmox_user = config_vars.get('PROXMOX_USER', '')
         self.config.proxmox_token = config_vars.get('PROXMOX_TOKEN', '')
         
-        # Parse boolean flags
-        self.config.plex_cert_enabled = config_vars.get('PLEX_CERT_ENABLED', 'false').lower() == 'true'
-        self.config.znc_cert_enabled = config_vars.get('ZNC_CERT_ENABLED', 'false').lower() == 'true'
-        self.config.plex_cert_password = config_vars.get('PLEX_CERT_PASSWORD', 'PASSWORD')
-        self.config.znc_dhparam_file = config_vars.get('ZNC_DHPARAM_FILE', '')
+        # Parse new certificate configuration
+        self.config.pkcs12_enabled = config_vars.get('PKCS12_ENABLED', 'false').lower() == 'true'
+        self.config.pkcs12_password = config_vars.get('PKCS12_PASSWORD', '')
+        self.config.pkcs12_filename = config_vars.get('PKCS12_FILENAME', 'certificate.pfx')
+        self.config.concatenated_enabled = config_vars.get('CONCATENATED_ENABLED', 'false').lower() == 'true'
+        self.config.concatenated_dhparam_file = config_vars.get('CONCATENATED_DHPARAM_FILE', '')
+        self.config.concatenated_filename = config_vars.get('CONCATENATED_FILENAME', 'combined.pem')
+        
+        # Backward compatibility: convert old settings to new format
+        if config_vars.get('PLEX_CERT_ENABLED', 'false').lower() == 'true':
+            self.config.pkcs12_enabled = True
+            self.config.pkcs12_password = config_vars.get('PLEX_CERT_PASSWORD', '')
+            self.config.pkcs12_filename = 'plex-certificate.pfx'
+        
+        if config_vars.get('ZNC_CERT_ENABLED', 'false').lower() == 'true':
+            self.config.concatenated_enabled = True
+            self.config.concatenated_dhparam_file = config_vars.get('ZNC_DHPARAM_FILE', '')
+            self.config.concatenated_filename = 'znc.pem'
         
         # Parse permission configuration
         self.config.file_permissions = config_vars.get('FILE_PERMISSIONS', '644')
@@ -194,6 +219,7 @@ class CertSpreader:
         # Parse arrays from extracted bash arrays
         self.config.host_services = arrays.get('HOST_SERVICES', [])
         self.config.proxmox_nodes = arrays.get('PROXMOX_NODES', [])
+        self.config.custom_certificates = arrays.get('CUSTOM_CERTIFICATES', [])
         
         self._validate_config()
     
@@ -311,58 +337,105 @@ class CertSpreader:
             return False
     
     def generate_service_certificates(self) -> None:
-        """Generate service-specific certificates"""
-        self.log("Generating service-specific certificates")
+        """Generate custom certificates based on configuration"""
+        self.log("Generating custom certificates")
         
-        # Generate Plex PKCS12 certificate
-        if self.config.plex_cert_enabled:
-            self.log("Generating Plex PKCS12 certificate")
-            plex_cert_path = os.path.join(self.config.cert_dir, 'plex-certificate.pfx')
-            
-            if self.dry_run:
-                self.log(f"Would generate Plex certificate: {plex_cert_path}")
-            else:
-                openssl_cmd = [
-                    'openssl', 'pkcs12', '-export', '-out', plex_cert_path,
-                    '-inkey', os.path.join(self.config.cert_dir, 'privkey.pem'),
-                    '-in', os.path.join(self.config.cert_dir, 'cert.pem'),
-                    '-certfile', os.path.join(self.config.cert_dir, 'fullchain.pem'),
-                    '-passout', f'pass:{self.config.plex_cert_password}'
-                ]
+        # Process array-based custom certificates first
+        for cert_config in self.config.custom_certificates:
+            self._generate_custom_certificate(cert_config)
+        
+        # Process individual configuration settings (backward compatibility + new format)
+        if self.config.pkcs12_enabled:
+            self._generate_pkcs12_certificate(
+                self.config.pkcs12_filename,
+                self.config.pkcs12_password
+            )
+        
+        if self.config.concatenated_enabled:
+            self._generate_concatenated_certificate(
+                self.config.concatenated_filename,
+                self.config.concatenated_dhparam_file
+            )
+    
+    def _generate_custom_certificate(self, cert_config: str) -> None:
+        """Generate a custom certificate based on configuration string"""
+        # Parse configuration: "type:password:filename" or "type:dhparam_file:filename"
+        parts = cert_config.split(':', 2)
+        if len(parts) < 2:
+            self.log(f"ERROR: Invalid custom certificate config: {cert_config}")
+            return
+        
+        cert_type = parts[0].lower()
+        param = parts[1] if len(parts) > 1 else ''
+        filename = parts[2] if len(parts) > 2 else f"custom-{cert_type}.pem"
+        
+        if cert_type == 'pkcs12':
+            self._generate_pkcs12_certificate(filename, param)
+        elif cert_type == 'concatenated':
+            # For concatenated, param is the dhparam file path
+            self._generate_concatenated_certificate(filename, param)
+        else:
+            self.log(f"ERROR: Unknown certificate type: {cert_type}")
+    
+    def _generate_pkcs12_certificate(self, filename: str, password: str = '') -> None:
+        """Generate PKCS12/PFX certificate"""
+        self.log(f"Generating PKCS12 certificate: {filename}")
+        cert_path = os.path.join(self.config.cert_dir, filename)
+        
+        if self.dry_run:
+            self.log(f"Would generate PKCS12 certificate: {cert_path}")
+            return
+        
+        # Build OpenSSL command
+        openssl_cmd = [
+            'openssl', 'pkcs12', '-export', '-out', cert_path,
+            '-inkey', os.path.join(self.config.cert_dir, 'privkey.pem'),
+            '-in', os.path.join(self.config.cert_dir, 'cert.pem'),
+            '-certfile', os.path.join(self.config.cert_dir, 'fullchain.pem')
+        ]
+        
+        # Add password if provided
+        if password:
+            openssl_cmd.extend(['-passout', f'pass:{password}'])
+        else:
+            openssl_cmd.extend(['-passout', 'pass:'])  # No password
+        
+        try:
+            subprocess.run(openssl_cmd, check=True, capture_output=True)
+            os.chmod(cert_path, 0o644)  # Use configurable permissions
+            self.log(f"Generated PKCS12 certificate: {filename}")
+            self.local_cert_changed = True
+        except subprocess.SubprocessError as e:
+            self.log(f"ERROR: Failed to generate PKCS12 certificate {filename}: {e}")
+    
+    def _generate_concatenated_certificate(self, filename: str, dhparam_file: str = '') -> None:
+        """Generate concatenated certificate (private key + certificate + chain + optional DH params)"""
+        self.log(f"Generating concatenated certificate: {filename}")
+        cert_path = os.path.join(self.config.cert_dir, filename)
+        
+        if self.dry_run:
+            self.log(f"Would generate concatenated certificate: {cert_path}")
+            return
+        
+        try:
+            with open(cert_path, 'w') as cert_file:
+                # Concatenate private key and full chain
+                with open(os.path.join(self.config.cert_dir, 'privkey.pem'), 'r') as f:
+                    cert_file.write(f.read())
+                with open(os.path.join(self.config.cert_dir, 'fullchain.pem'), 'r') as f:
+                    cert_file.write(f.read())
                 
-                try:
-                    subprocess.run(openssl_cmd, check=True, capture_output=True)
-                    os.chmod(plex_cert_path, 0o755)
-                    self.log("Generated Plex certificate")
-                    self.local_cert_changed = True
-                except subprocess.SubprocessError as e:
-                    self.log(f"ERROR: Failed to generate Plex certificate: {e}")
-        
-        # Generate ZNC certificate
-        if self.config.znc_cert_enabled:
-            self.log("Generating ZNC certificate")
-            znc_cert_path = os.path.join(self.config.cert_dir, 'znc.pem')
+                # Add DH parameters if file exists
+                if dhparam_file and os.path.isfile(dhparam_file):
+                    with open(dhparam_file, 'r') as f:
+                        cert_file.write(f.read())
+                    self.log(f"Added DH parameters from: {dhparam_file}")
             
-            if self.dry_run:
-                self.log(f"Would generate ZNC certificate: {znc_cert_path}")
-            else:
-                try:
-                    with open(znc_cert_path, 'w') as znc_file:
-                        # Concatenate private key and full chain
-                        with open(os.path.join(self.config.cert_dir, 'privkey.pem'), 'r') as f:
-                            znc_file.write(f.read())
-                        with open(os.path.join(self.config.cert_dir, 'fullchain.pem'), 'r') as f:
-                            znc_file.write(f.read())
-                        
-                        # Add DH parameters if file exists
-                        if self.config.znc_dhparam_file and os.path.isfile(self.config.znc_dhparam_file):
-                            with open(self.config.znc_dhparam_file, 'r') as f:
-                                znc_file.write(f.read())
-                    
-                    self.log("Generated ZNC certificate")
-                    self.local_cert_changed = True
-                except IOError as e:
-                    self.log(f"ERROR: Failed to generate ZNC certificate: {e}")
+            os.chmod(cert_path, 0o644)  # Use configurable permissions
+            self.log(f"Generated concatenated certificate: {filename}")
+            self.local_cert_changed = True
+        except IOError as e:
+            self.log(f"ERROR: Failed to generate concatenated certificate {filename}: {e}")
     
     def restart_services(self) -> None:
         """Restart services on remote hosts with reload fallback"""
@@ -597,10 +670,63 @@ class CertSpreader:
                 else:
                     self.log(f"File permissions OK: {filename} ({expected_perms}, {self.config.file_owner}:{self.config.file_group})")
         
+        # Secure custom certificate files
+        self._secure_custom_certificate_files(uid, gid, changes_needed)
+        
         if not changes_needed:
             self.log("All certificate permissions already correct")
         elif not self.dry_run:
             self.log("Certificate directory permissions secured")
+    
+    def _secure_custom_certificate_files(self, uid: int, gid: int, changes_needed: bool) -> bool:
+        """Secure custom certificate files"""
+        # Secure individual setting certificates
+        custom_files = []
+        
+        if self.config.pkcs12_enabled:
+            custom_files.append(self.config.pkcs12_filename)
+        
+        if self.config.concatenated_enabled:
+            custom_files.append(self.config.concatenated_filename)
+        
+        # Extract filenames from custom certificate array
+        for cert_config in self.config.custom_certificates:
+            parts = cert_config.split(':', 2)
+            if len(parts) >= 3:
+                custom_files.append(parts[2])
+            elif len(parts) >= 1:
+                cert_type = parts[0].lower()
+                custom_files.append(f"custom-{cert_type}.pem")
+        
+        # Secure each custom certificate file
+        for filename in custom_files:
+            filepath = os.path.join(self.config.cert_dir, filename)
+            if os.path.isfile(filepath):
+                stat_info = os.stat(filepath)
+                current_perms = oct(stat_info.st_mode)[-3:]
+                current_uid = stat_info.st_uid
+                current_gid = stat_info.st_gid
+                
+                perms_need_change = current_perms != self.config.file_permissions
+                owner_needs_change = current_uid != uid or current_gid != gid
+                
+                if perms_need_change or owner_needs_change:
+                    if self.dry_run:
+                        self.log(f"Would secure custom certificate: {filename} ({self.config.file_permissions}, {self.config.file_owner}:{self.config.file_group})")
+                    else:
+                        try:
+                            if perms_need_change:
+                                os.chmod(filepath, int(self.config.file_permissions, 8))
+                            if owner_needs_change:
+                                os.chown(filepath, uid, gid)
+                            self.log(f"Secured custom certificate: {filename} ({self.config.file_permissions}, {self.config.file_owner}:{self.config.file_group})")
+                        except OSError as e:
+                            self.log(f"WARNING: Failed to secure custom certificate {filename}: {e}")
+                    changes_needed = True
+                else:
+                    self.log(f"Custom certificate permissions OK: {filename} ({self.config.file_permissions}, {self.config.file_owner}:{self.config.file_group})")
+        
+        return changes_needed
     
     
     def reload_local_nginx(self) -> None:
@@ -689,6 +815,18 @@ class CertSpreader:
 
 def main():
     """Main function"""
+    # Filter out spurious single-digit arguments that might come from shell redirection
+    filtered_args = []
+    for arg in sys.argv[1:]:
+        if arg.isdigit() and len(arg) == 1:
+            print(f"Warning: Ignoring spurious numeric argument: {arg}", file=sys.stderr)
+            continue
+        filtered_args.append(arg)
+    
+    # Temporarily replace sys.argv for argparse
+    original_argv = sys.argv[1:]
+    sys.argv[1:] = filtered_args
+    
     parser = argparse.ArgumentParser(
         description="Certificate Spreader - Deploy Let's Encrypt certificates to multiple hosts",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -731,7 +869,7 @@ Examples:
         print(f"Config file should have .conf extension: {args.config_file}", file=sys.stderr)
         sys.exit(ExitCodes.USAGE)
     
-    print(f"Starting cert-spreader with arguments: {' '.join(sys.argv[1:])}")
+    print(f"Starting cert-spreader with arguments: {' '.join(original_argv)}")
     
     # Create and configure cert spreader
     spreader = CertSpreader(args.config_file)

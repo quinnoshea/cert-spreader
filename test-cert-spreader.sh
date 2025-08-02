@@ -50,6 +50,18 @@ HOST_SERVICES=(
 PROXMOX_USER="test@pve!testtoken"
 PROXMOX_TOKEN="fake-token"
 PROXMOX_NODES=("test-proxmox1" "test-proxmox2")
+# New flexible certificate configuration for testing
+CUSTOM_CERTIFICATES=(
+    "pkcs12:testpass:test-app.pfx"
+    "concatenated::test-combined.pem"
+)
+# Individual settings for testing
+PKCS12_ENABLED=true
+PKCS12_PASSWORD="individual-pass"
+PKCS12_FILENAME="individual.pfx"
+CONCATENATED_ENABLED=true
+CONCATENATED_FILENAME="individual-combined.pem"
+# Legacy settings (disabled)
 PLEX_CERT_ENABLED=false
 ZNC_CERT_ENABLED=false
 EOF
@@ -313,6 +325,130 @@ test_cert_changed_function() {
     fi
 }
 
+test_custom_certificate_functions() {
+    # Test that new certificate generation functions exist
+    if declare -f generate_service_certificates >/dev/null 2>&1; then
+        assert_success 0 "generate_service_certificates function exists"
+        
+        local function_body
+        function_body=$(declare -f generate_service_certificates)
+        
+        # Check for new flexible generation calls
+        if [[ "$function_body" == *"generate_custom_certificate"* ]]; then
+            assert_success 0 "generate_service_certificates calls generate_custom_certificate"
+        else
+            assert_failure 0 "generate_service_certificates should call generate_custom_certificate"
+        fi
+        
+        if [[ "$function_body" == *"CUSTOM_CERTIFICATES"* ]]; then
+            assert_success 0 "generate_service_certificates processes CUSTOM_CERTIFICATES array"
+        else
+            assert_failure 0 "generate_service_certificates should process CUSTOM_CERTIFICATES array"
+        fi
+    else
+        assert_failure 0 "generate_service_certificates function exists"
+    fi
+    
+    # Test individual certificate generation functions
+    if declare -f generate_pkcs12_certificate >/dev/null 2>&1; then
+        assert_success 0 "generate_pkcs12_certificate function exists"
+    else
+        assert_failure 0 "generate_pkcs12_certificate function should exist"
+    fi
+    
+    if declare -f generate_concatenated_certificate >/dev/null 2>&1; then
+        assert_success 0 "generate_concatenated_certificate function exists"
+    else
+        assert_failure 0 "generate_concatenated_certificate function should exist"
+    fi
+    
+    if declare -f generate_custom_certificate >/dev/null 2>&1; then
+        assert_success 0 "generate_custom_certificate function exists"
+    else
+        assert_failure 0 "generate_custom_certificate function should exist"
+    fi
+}
+
+test_custom_certificate_security() {
+    # Test that custom certificate security function exists
+    if declare -f secure_custom_certificates >/dev/null 2>&1; then
+        assert_success 0 "secure_custom_certificates function exists"
+        
+        local function_body
+        function_body=$(declare -f secure_custom_certificates)
+        
+        # Check for array processing
+        if [[ "$function_body" == *"CUSTOM_CERTIFICATES"* ]]; then
+            assert_success 0 "secure_custom_certificates processes CUSTOM_CERTIFICATES array"
+        else
+            assert_failure 0 "secure_custom_certificates should process CUSTOM_CERTIFICATES array"
+        fi
+        
+        # Check for individual settings processing
+        if [[ "$function_body" == *"PKCS12_ENABLED"* && "$function_body" == *"CONCATENATED_ENABLED"* ]]; then
+            assert_success 0 "secure_custom_certificates processes individual certificate settings"
+        else
+            assert_failure 0 "secure_custom_certificates should process individual certificate settings"
+        fi
+        
+        # Check for backward compatibility
+        if [[ "$function_body" == *"PLEX_CERT_ENABLED"* && "$function_body" == *"ZNC_CERT_ENABLED"* ]]; then
+            assert_success 0 "secure_custom_certificates maintains backward compatibility"
+        else
+            assert_failure 0 "secure_custom_certificates should maintain backward compatibility"
+        fi
+    else
+        assert_failure 0 "secure_custom_certificates function should exist"
+    fi
+}
+
+test_certificate_config_parsing() {
+    # Test that the script can parse the new certificate configuration
+    local temp_config="$TEST_DIR/cert-config-test.conf"
+    cat > "$temp_config" << EOF
+DOMAIN="test.example.com"
+CERT_DIR="$TEST_CERT_DIR"
+HOSTS="test-host1"
+CUSTOM_CERTIFICATES=(
+    "pkcs12:password:test.pfx"
+    "concatenated::test.pem"
+)
+PKCS12_ENABLED=true
+PKCS12_FILENAME="individual.pfx"
+CONCATENATED_ENABLED=true
+CONCATENATED_FILENAME="individual.pem"
+EOF
+    
+    # Source the config to test parsing
+    if source "$temp_config" 2>/dev/null; then
+        assert_success 0 "New certificate configuration can be sourced"
+        
+        # Test array parsing
+        if [[ ${#CUSTOM_CERTIFICATES[@]} -eq 2 ]]; then
+            assert_success 0 "CUSTOM_CERTIFICATES array parsed correctly"
+        else
+            assert_failure 0 "CUSTOM_CERTIFICATES array should have 2 elements, got ${#CUSTOM_CERTIFICATES[@]}"
+        fi
+        
+        # Test individual settings
+        if [[ "$PKCS12_ENABLED" == "true" && "$PKCS12_FILENAME" == "individual.pfx" ]]; then
+            assert_success 0 "Individual PKCS12 settings parsed correctly"
+        else
+            assert_failure 0 "Individual PKCS12 settings not parsed correctly"
+        fi
+        
+        if [[ "$CONCATENATED_ENABLED" == "true" && "$CONCATENATED_FILENAME" == "individual.pem" ]]; then
+            assert_success 0 "Individual concatenated settings parsed correctly"
+        else
+            assert_failure 0 "Individual concatenated settings not parsed correctly"
+        fi
+    else
+        assert_failure 0 "Certificate configuration should be parseable"
+    fi
+    
+    rm -f "$temp_config"
+}
+
 # Test runner
 run_all_tests() {
     echo -e "${BLUE}Starting cert-spreader.sh unit tests...${NC}"
@@ -333,6 +469,11 @@ run_all_tests() {
     # Test new functionality
     test_deployed_hosts_tracking
     test_local_cert_changed_flag
+    
+    # Test new certificate functionality
+    test_custom_certificate_functions
+    test_custom_certificate_security
+    test_certificate_config_parsing
     
     cleanup_test_environment
     

@@ -137,6 +137,12 @@ parse_args() {
             *)
                 # Default case: anything that doesn't match above patterns
                 # If it doesn't start with -, assume it's a config file
+                # Filter out spurious single-digit arguments that might come from shell redirection
+                if [[ "$1" =~ ^[0-9]$ ]]; then
+                    echo "Warning: Ignoring spurious numeric argument: $1" >&2
+                    shift
+                    continue
+                fi
                 if [[ "$1" != *.conf ]]; then
                     # Pattern matching: *.conf means "ends with .conf"
                     echo "Config file should have .conf extension: $1" >&2
@@ -557,64 +563,128 @@ update_proxmox() {
     done
 }
 
-# SERVICE-SPECIFIC CERTIFICATE GENERATION:
-# This function creates certificates in formats required by specific services
-# It demonstrates OpenSSL usage and file concatenation
+# FLEXIBLE CERTIFICATE GENERATION:
+# This function creates certificates based on user configuration
+# Supports PKCS12/PFX and concatenated certificate formats
 generate_service_certificates() {
-    log "Generating service-specific certificates"
+    log "Generating custom certificates"
     
-    # PLEX CERTIFICATE GENERATION:
-    # Plex media server requires PKCS12 format certificates
-    if [[ "${PLEX_CERT_ENABLED:-false}" == true ]]; then
-        local plex_password="${PLEX_CERT_PASSWORD:-PASSWORD}"
-        log "Generating Plex PKCS12 certificate"
-        
-        if [[ "$DRY_RUN" == true ]]; then
-            log "Would generate Plex certificate: $CERT_DIR/plex-certificate.pfx"
-        else
-            # OPENSSL PKCS12 COMMAND:
-            # -export: create PKCS12 file
-            # -out: output file
-            # -inkey: private key file
-            # -in: certificate file
-            # -certfile: certificate chain file
-            # -passout: password for the PKCS12 file
-            # 2>&1 | logger: redirect output to system log
-            openssl pkcs12 -export -out "$CERT_DIR/plex-certificate.pfx" \
-                -inkey "$CERT_DIR/privkey.pem" \
-                -in "$CERT_DIR/cert.pem" \
-                -certfile "$CERT_DIR/fullchain.pem" \
-                -passout "pass:$plex_password" 2>&1 | logger -t cert-spreader
-            
-            # SET FILE PERMISSIONS: chmod changes file permissions
-            # 755 = owner: read/write/execute, group/others: read/execute
-            chmod 755 "$CERT_DIR/plex-certificate.pfx"
-            log "Generated Plex certificate"
-            LOCAL_CERT_CHANGED=true
-        fi
+    # Process array-based custom certificates first
+    if [[ ${#CUSTOM_CERTIFICATES[@]} -gt 0 ]]; then
+        for cert_config in "${CUSTOM_CERTIFICATES[@]}"; do
+            generate_custom_certificate "$cert_config"
+        done
     fi
     
-    # ZNC CERTIFICATE GENERATION:
-    # ZNC IRC bouncer needs private key and certificate in single file
+    # Process individual configuration settings (backward compatibility + new format)
+    if [[ "${PKCS12_ENABLED:-false}" == true ]]; then
+        generate_pkcs12_certificate "${PKCS12_FILENAME:-certificate.pfx}" "${PKCS12_PASSWORD:-}"
+    fi
+    
+    if [[ "${CONCATENATED_ENABLED:-false}" == true ]]; then
+        generate_concatenated_certificate "${CONCATENATED_FILENAME:-combined.pem}" "${CONCATENATED_DHPARAM_FILE:-}"
+    fi
+    
+    # Backward compatibility: convert old Plex/ZNC settings
+    if [[ "${PLEX_CERT_ENABLED:-false}" == true ]]; then
+        generate_pkcs12_certificate "plex-certificate.pfx" "${PLEX_CERT_PASSWORD:-}"
+    fi
+    
     if [[ "${ZNC_CERT_ENABLED:-false}" == true ]]; then
-        log "Generating ZNC certificate"
-        
-        if [[ "$DRY_RUN" == true ]]; then
-            log "Would generate ZNC certificate: $CERT_DIR/znc.pem"
-        else
-            # FILE CONCATENATION:
-            # cat multiple files and redirect output (>) to create combined file
-            # ZNC expects private key + certificate chain + optional DH parameters
-            if [[ -f "${ZNC_DHPARAM_FILE:-}" ]]; then
-                # Include Diffie-Hellman parameters if file exists
-                cat "$CERT_DIR/privkey.pem" "$CERT_DIR/fullchain.pem" "$ZNC_DHPARAM_FILE" > "$CERT_DIR/znc.pem"
-            else
-                # Just private key + certificate chain
-                cat "$CERT_DIR/privkey.pem" "$CERT_DIR/fullchain.pem" > "$CERT_DIR/znc.pem"
-            fi
-            log "Generated ZNC certificate"
-            LOCAL_CERT_CHANGED=true
+        generate_concatenated_certificate "znc.pem" "${ZNC_DHPARAM_FILE:-}"
+    fi
+}
+
+# CUSTOM CERTIFICATE GENERATOR:
+# Parses configuration string and generates appropriate certificate
+generate_custom_certificate() {
+    local cert_config="$1"
+    
+    # Parse configuration: "type:password:filename" or "type:dhparam_file:filename"
+    IFS=':' read -r cert_type param filename <<< "$cert_config"
+    
+    # Set default filename if not provided
+    if [[ -z "$filename" ]]; then
+        filename="custom-${cert_type}.pem"
+    fi
+    
+    case "$cert_type" in
+        pkcs12)
+            generate_pkcs12_certificate "$filename" "$param"
+            ;;
+        concatenated)
+            # For concatenated, param is the dhparam file path
+            generate_concatenated_certificate "$filename" "$param"
+            ;;
+        *)
+            log "ERROR: Unknown certificate type: $cert_type"
+            ;;
+    esac
+}
+
+# PKCS12/PFX CERTIFICATE GENERATOR:
+# Creates PKCS12 format certificates with optional password
+generate_pkcs12_certificate() {
+    local filename="$1"
+    local password="$2"
+    
+    log "Generating PKCS12 certificate: $filename"
+    local cert_path="$CERT_DIR/$filename"
+    
+    if [[ "$DRY_RUN" == true ]]; then
+        log "Would generate PKCS12 certificate: $cert_path"
+        return
+    fi
+    
+    # Build OpenSSL command
+    local openssl_cmd="openssl pkcs12 -export -out '$cert_path' -inkey '$CERT_DIR/privkey.pem' -in '$CERT_DIR/cert.pem' -certfile '$CERT_DIR/fullchain.pem'"
+    
+    # Add password if provided
+    if [[ -n "$password" ]]; then
+        openssl_cmd="$openssl_cmd -passout 'pass:$password'"
+    else
+        openssl_cmd="$openssl_cmd -passout 'pass:'"
+    fi
+    
+    # Execute command
+    if eval "$openssl_cmd" 2>&1 | logger -t cert-spreader; then
+        chmod "$FILE_PERMISSIONS" "$cert_path"
+        chown "$FILE_OWNER:$FILE_GROUP" "$cert_path"
+        log "Generated PKCS12 certificate: $filename"
+        LOCAL_CERT_CHANGED=true
+    else
+        log "ERROR: Failed to generate PKCS12 certificate: $filename"
+    fi
+}
+
+# CONCATENATED CERTIFICATE GENERATOR:
+# Creates concatenated certificate (private key + certificate + chain + optional DH params)
+generate_concatenated_certificate() {
+    local filename="$1"
+    local dhparam_file="$2"
+    
+    log "Generating concatenated certificate: $filename"
+    local cert_path="$CERT_DIR/$filename"
+    
+    if [[ "$DRY_RUN" == true ]]; then
+        log "Would generate concatenated certificate: $cert_path"
+        return
+    fi
+    
+    # Create concatenated certificate
+    if cat "$CERT_DIR/privkey.pem" "$CERT_DIR/fullchain.pem" > "$cert_path"; then
+        # Add DH parameters if file exists
+        if [[ -n "$dhparam_file" && -f "$dhparam_file" ]]; then
+            cat "$dhparam_file" >> "$cert_path"
+            log "Added DH parameters from: $dhparam_file"
         fi
+        
+        chmod "$FILE_PERMISSIONS" "$cert_path"
+        chown "$FILE_OWNER:$FILE_GROUP" "$cert_path"
+        log "Generated concatenated certificate: $filename"
+        LOCAL_CERT_CHANGED=true
+    else
+        log "ERROR: Failed to generate concatenated certificate: $filename"
     fi
 }
 
@@ -756,38 +826,9 @@ secure_cert_permissions() {
     # This approach is more flexible than hardcoded arrays
     discover_and_secure_cert_files
     
-    # SECURE SERVICE-SPECIFIC CERTIFICATES:
-    # Handle Plex certificate if enabled
-    if [[ "${PLEX_CERT_ENABLED:-false}" == true && -f "$CERT_DIR/plex-certificate.pfx" ]]; then
-        if ! check_permissions "$CERT_DIR/plex-certificate.pfx" "$FILE_PERMISSIONS" "$FILE_OWNER:$FILE_GROUP"; then
-            if [[ "$DRY_RUN" == true ]]; then
-                log "Would secure Plex certificate: plex-certificate.pfx ($FILE_PERMISSIONS, $FILE_OWNER:$FILE_GROUP)"
-            else
-                chmod "$FILE_PERMISSIONS" "$CERT_DIR/plex-certificate.pfx"
-                chown "$FILE_OWNER:$FILE_GROUP" "$CERT_DIR/plex-certificate.pfx"
-                log "Secured Plex certificate: plex-certificate.pfx ($FILE_PERMISSIONS, $FILE_OWNER:$FILE_GROUP)"
-            fi
-            changes_needed=true
-        else
-            log "Plex certificate permissions OK: plex-certificate.pfx ($FILE_PERMISSIONS, $FILE_OWNER:$FILE_GROUP)"
-        fi
-    fi
-    
-    # Handle ZNC certificate if enabled
-    if [[ "${ZNC_CERT_ENABLED:-false}" == true && -f "$CERT_DIR/znc.pem" ]]; then
-        if ! check_permissions "$CERT_DIR/znc.pem" "$FILE_PERMISSIONS" "$FILE_OWNER:$FILE_GROUP"; then
-            if [[ "$DRY_RUN" == true ]]; then
-                log "Would secure ZNC certificate: znc.pem ($FILE_PERMISSIONS, $FILE_OWNER:$FILE_GROUP)"
-            else
-                chmod "$FILE_PERMISSIONS" "$CERT_DIR/znc.pem"
-                chown "$FILE_OWNER:$FILE_GROUP" "$CERT_DIR/znc.pem"
-                log "Secured ZNC certificate: znc.pem ($FILE_PERMISSIONS, $FILE_OWNER:$FILE_GROUP)"
-            fi
-            changes_needed=true
-        else
-            log "ZNC certificate permissions OK: znc.pem ($FILE_PERMISSIONS, $FILE_OWNER:$FILE_GROUP)"
-        fi
-    fi
+    # SECURE CUSTOM CERTIFICATES:
+    # Handle custom certificates based on configuration
+    secure_custom_certificates
     
     # SUMMARY LOGGING:
     if [[ "$changes_needed" == false ]]; then
@@ -797,6 +838,61 @@ secure_cert_permissions() {
             log "Certificate directory permissions secured"
         fi
     fi
+}
+
+# SECURE CUSTOM CERTIFICATES FUNCTION:
+# This function secures custom certificate files based on configuration
+secure_custom_certificates() {
+    local custom_files=()
+    
+    # Collect filenames from individual settings
+    if [[ "${PKCS12_ENABLED:-false}" == true ]]; then
+        custom_files+=("${PKCS12_FILENAME:-certificate.pfx}")
+    fi
+    
+    if [[ "${CONCATENATED_ENABLED:-false}" == true ]]; then
+        custom_files+=("${CONCATENATED_FILENAME:-combined.pem}")
+    fi
+    
+    # Collect filenames from custom certificate array
+    if [[ ${#CUSTOM_CERTIFICATES[@]} -gt 0 ]]; then
+        for cert_config in "${CUSTOM_CERTIFICATES[@]}"; do
+            IFS=':' read -r cert_type param filename <<< "$cert_config"
+            if [[ -n "$filename" ]]; then
+                custom_files+=("$filename")
+            else
+                custom_files+=("custom-${cert_type}.pem")
+            fi
+        done
+    fi
+    
+    # Backward compatibility
+    if [[ "${PLEX_CERT_ENABLED:-false}" == true ]]; then
+        custom_files+=("plex-certificate.pfx")
+    fi
+    
+    if [[ "${ZNC_CERT_ENABLED:-false}" == true ]]; then
+        custom_files+=("znc.pem")
+    fi
+    
+    # Secure each custom certificate file
+    for filename in "${custom_files[@]}"; do
+        local filepath="$CERT_DIR/$filename"
+        if [[ -f "$filepath" ]]; then
+            if ! check_permissions "$filepath" "$FILE_PERMISSIONS" "$FILE_OWNER:$FILE_GROUP"; then
+                if [[ "$DRY_RUN" == true ]]; then
+                    log "Would secure custom certificate: $filename ($FILE_PERMISSIONS, $FILE_OWNER:$FILE_GROUP)"
+                else
+                    chmod "$FILE_PERMISSIONS" "$filepath"
+                    chown "$FILE_OWNER:$FILE_GROUP" "$filepath"
+                    log "Secured custom certificate: $filename ($FILE_PERMISSIONS, $FILE_OWNER:$FILE_GROUP)"
+                fi
+                changes_needed=true
+            else
+                log "Custom certificate permissions OK: $filename ($FILE_PERMISSIONS, $FILE_OWNER:$FILE_GROUP)"
+            fi
+        fi
+    done
 }
 
 

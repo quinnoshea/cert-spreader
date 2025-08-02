@@ -48,11 +48,14 @@ class TestConfig(unittest.TestCase):
         self.assertEqual(config.host_services, [])
         self.assertEqual(config.proxmox_nodes, [])
         
-        # Test service configuration defaults
-        self.assertFalse(config.plex_cert_enabled)
-        self.assertEqual(config.plex_cert_password, "PASSWORD")
-        self.assertFalse(config.znc_cert_enabled)
-        self.assertEqual(config.znc_dhparam_file, "")
+        # Test new certificate configuration defaults
+        self.assertEqual(config.custom_certificates, [])
+        self.assertFalse(config.pkcs12_enabled)
+        self.assertEqual(config.pkcs12_password, "")
+        self.assertEqual(config.pkcs12_filename, "certificate.pfx")
+        self.assertFalse(config.concatenated_enabled)
+        self.assertEqual(config.concatenated_dhparam_file, "")
+        self.assertEqual(config.concatenated_filename, "combined.pem")
         
         # Test permission defaults
         self.assertEqual(config.file_permissions, "644")
@@ -152,10 +155,16 @@ PROXMOX_NODES=(
 )
 PROXMOX_USER="test@pve!token"
 PROXMOX_TOKEN="fake-token"
-PLEX_CERT_ENABLED=true
-PLEX_CERT_PASSWORD="testpass"
-ZNC_CERT_ENABLED=true
-ZNC_DHPARAM_FILE="/etc/ssl/dhparam.pem"
+CUSTOM_CERTIFICATES=(
+    "pkcs12:testpass:test-certificate.pfx"
+    "concatenated:/etc/ssl/dhparam.pem:test-combined.pem"
+)
+PKCS12_ENABLED=true
+PKCS12_PASSWORD="individual-password"
+PKCS12_FILENAME="individual.pfx"
+CONCATENATED_ENABLED=true
+CONCATENATED_DHPARAM_FILE="/etc/ssl/dhparam2.pem"
+CONCATENATED_FILENAME="individual.pem"
 FILE_PERMISSIONS=640
 PRIVKEY_PERMISSIONS=600
 DIRECTORY_PERMISSIONS=750
@@ -180,11 +189,15 @@ FILE_GROUP=ssl-cert
         self.assertEqual(spreader.config.host_services, ["host1:22:nginx", "host2:2222:apache2,mysql"])
         self.assertEqual(spreader.config.proxmox_nodes, ["proxmox1", "proxmox2"])
         
-        # Test service configuration
-        self.assertTrue(spreader.config.plex_cert_enabled)
-        self.assertEqual(spreader.config.plex_cert_password, "testpass")
-        self.assertTrue(spreader.config.znc_cert_enabled)
-        self.assertEqual(spreader.config.znc_dhparam_file, "/etc/ssl/dhparam.pem")
+        # Test new certificate configuration
+        self.assertEqual(spreader.config.custom_certificates, 
+                        ["pkcs12:testpass:test-certificate.pfx", "concatenated:/etc/ssl/dhparam.pem:test-combined.pem"])
+        self.assertTrue(spreader.config.pkcs12_enabled)
+        self.assertEqual(spreader.config.pkcs12_password, "individual-password")
+        self.assertEqual(spreader.config.pkcs12_filename, "individual.pfx")
+        self.assertTrue(spreader.config.concatenated_enabled)
+        self.assertEqual(spreader.config.concatenated_dhparam_file, "/etc/ssl/dhparam2.pem")
+        self.assertEqual(spreader.config.concatenated_filename, "individual.pem")
         
         # Test permission configuration
         self.assertEqual(spreader.config.file_permissions, "640")
@@ -467,6 +480,177 @@ class TestIntegration(unittest.TestCase):
         result = subprocess.run([sys.executable, script_path, "nonexistent.conf", "--dry-run"], 
                               capture_output=True, text=True)
         self.assertEqual(result.returncode, ExitCodes.CONFIG)
+
+
+class TestCustomCertificates(unittest.TestCase):
+    """Test the new flexible certificate generation system"""
+    
+    def setUp(self):
+        """Set up test environment"""
+        self.temp_dir = tempfile.mkdtemp()
+        self.test_cert_dir = os.path.join(self.temp_dir, 'certs')
+        self.test_config = os.path.join(self.temp_dir, 'test.conf')
+        os.makedirs(self.test_cert_dir)
+        
+        # Create test certificate files
+        for filename in ["privkey.pem", "cert.pem", "fullchain.pem"]:
+            with open(os.path.join(self.test_cert_dir, filename), 'w') as f:
+                f.write(f"fake {filename} content")
+    
+    def tearDown(self):
+        """Clean up test environment"""
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+    
+    def test_custom_certificate_array_parsing(self):
+        """Test parsing of CUSTOM_CERTIFICATES array"""
+        config_content = f'''
+DOMAIN="test.example.com"
+CERT_DIR="{self.test_cert_dir}"
+HOSTS="host1"
+CUSTOM_CERTIFICATES=(
+    "pkcs12:password123:myapp.pfx"
+    "concatenated:/etc/ssl/dhparam.pem:nginx.pem"
+    "concatenated::simple.pem"
+)
+'''
+        with open(self.test_config, 'w') as f:
+            f.write(config_content)
+        
+        spreader = CertSpreader(self.test_config)
+        with patch('os.path.isdir', return_value=True), \
+             patch('os.access', return_value=True):
+            spreader.load_config()
+        
+        expected_certs = [
+            "pkcs12:password123:myapp.pfx",
+            "concatenated:/etc/ssl/dhparam.pem:nginx.pem", 
+            "concatenated::simple.pem"
+        ]
+        self.assertEqual(spreader.config.custom_certificates, expected_certs)
+    
+    def test_individual_certificate_settings(self):
+        """Test individual PKCS12 and concatenated settings"""
+        config_content = f'''
+DOMAIN="test.example.com"
+CERT_DIR="{self.test_cert_dir}"
+HOSTS="host1"
+PKCS12_ENABLED=true
+PKCS12_PASSWORD="test-password"
+PKCS12_FILENAME="application.pfx"
+CONCATENATED_ENABLED=true
+CONCATENATED_DHPARAM_FILE="/etc/ssl/dhparam.pem"
+CONCATENATED_FILENAME="server.pem"
+'''
+        with open(self.test_config, 'w') as f:
+            f.write(config_content)
+        
+        spreader = CertSpreader(self.test_config)
+        with patch('os.path.isdir', return_value=True), \
+             patch('os.access', return_value=True):
+            spreader.load_config()
+        
+        self.assertTrue(spreader.config.pkcs12_enabled)
+        self.assertEqual(spreader.config.pkcs12_password, "test-password")
+        self.assertEqual(spreader.config.pkcs12_filename, "application.pfx")
+        self.assertTrue(spreader.config.concatenated_enabled)
+        self.assertEqual(spreader.config.concatenated_dhparam_file, "/etc/ssl/dhparam.pem")
+        self.assertEqual(spreader.config.concatenated_filename, "server.pem")
+    
+    @patch('subprocess.run')
+    def test_generate_pkcs12_certificate(self, mock_subprocess):
+        """Test PKCS12 certificate generation"""
+        config_content = f'''
+DOMAIN="test.example.com"
+CERT_DIR="{self.test_cert_dir}"
+HOSTS="host1"
+PKCS12_ENABLED=true
+PKCS12_PASSWORD="test123"
+PKCS12_FILENAME="test.pfx"
+'''
+        with open(self.test_config, 'w') as f:
+            f.write(config_content)
+        
+        spreader = CertSpreader(self.test_config)
+        with patch('os.path.isdir', return_value=True), \
+             patch('os.access', return_value=True), \
+             patch('sys.exit'):  # Prevent sys.exit during validation
+            spreader.load_config()
+        
+        # Mock successful subprocess run
+        mock_subprocess.return_value = Mock(returncode=0)
+        
+        with patch('os.chmod') as mock_chmod:
+            spreader.generate_service_certificates()
+        
+        # Verify OpenSSL command was called
+        mock_subprocess.assert_called()
+        call_args = mock_subprocess.call_args[0][0]
+        self.assertIn('openssl', call_args)
+        self.assertIn('pkcs12', call_args)
+        self.assertIn('-export', call_args)
+        
+        # Verify permissions were set
+        mock_chmod.assert_called()
+    
+    def test_generate_concatenated_certificate(self):
+        """Test concatenated certificate generation"""
+        config_content = f'''
+DOMAIN="test.example.com"
+CERT_DIR="{self.test_cert_dir}"
+HOSTS="host1"
+CONCATENATED_ENABLED=true
+CONCATENATED_FILENAME="combined.pem"
+'''
+        with open(self.test_config, 'w') as f:
+            f.write(config_content)
+        
+        spreader = CertSpreader(self.test_config)
+        with patch('os.path.isdir', return_value=True), \
+             patch('os.access', return_value=True):
+            spreader.load_config()
+        
+        with patch('os.chmod') as mock_chmod:
+            spreader.generate_service_certificates()
+        
+        # Check if concatenated file was created
+        combined_path = os.path.join(self.test_cert_dir, "combined.pem")
+        self.assertTrue(os.path.exists(combined_path))
+        
+        # Verify content contains both private key and certificate
+        with open(combined_path, 'r') as f:
+            content = f.read()
+        self.assertIn("fake privkey.pem content", content)
+        self.assertIn("fake fullchain.pem content", content)
+        
+        # Verify permissions were set
+        mock_chmod.assert_called()
+    
+    def test_backward_compatibility(self):
+        """Test that old PLEX_CERT and ZNC_CERT settings still work"""
+        config_content = f'''
+DOMAIN="test.example.com"
+CERT_DIR="{self.test_cert_dir}"
+HOSTS="host1"
+PLEX_CERT_ENABLED=true
+PLEX_CERT_PASSWORD="legacy-password"
+ZNC_CERT_ENABLED=true
+ZNC_DHPARAM_FILE="/etc/ssl/dhparam.pem"
+'''
+        with open(self.test_config, 'w') as f:
+            f.write(config_content)
+        
+        spreader = CertSpreader(self.test_config)
+        with patch('os.path.isdir', return_value=True), \
+             patch('os.access', return_value=True):
+            spreader.load_config()
+        
+        # Verify backward compatibility conversion
+        self.assertTrue(spreader.config.pkcs12_enabled)
+        self.assertEqual(spreader.config.pkcs12_password, "legacy-password")
+        self.assertEqual(spreader.config.pkcs12_filename, "plex-certificate.pfx")
+        self.assertTrue(spreader.config.concatenated_enabled)
+        self.assertEqual(spreader.config.concatenated_dhparam_file, "/etc/ssl/dhparam.pem")
+        self.assertEqual(spreader.config.concatenated_filename, "znc.pem")
 
 
 if __name__ == '__main__':
