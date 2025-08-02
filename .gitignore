@@ -41,6 +41,8 @@ temp/                       # Temporary directory
 
 # === PYTHON FILES ===
 __pycache__/                # Python cache
+*/__pycache__/              # Python cache in subdirectories
+**/__pycache__/             # Python cache recursively
 *.pyc                       # Python compiled files
 *.pyo                       # Python optimized files
 *.pyd                       # Python extension modules
