@@ -40,7 +40,6 @@ setup_test_environment() {
     cat > "$TEST_CONFIG" << EOF
 DOMAIN="test.example.com"
 CERT_DIR="$TEST_CERT_DIR"
-BACKUP_HOST="test-backup"
 SSH_OPTS="-o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new"
 LOG_FILE="$TEST_DIR/test-cert-spreader.log"
 HOSTS="test-host1 test-host2"

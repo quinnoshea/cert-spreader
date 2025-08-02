@@ -189,7 +189,7 @@ load_config() {
     
     # VARIABLE VALIDATION:
     # Create an array of required variable names
-    local required_vars=(DOMAIN CERT_DIR BACKUP_HOST HOSTS)
+    local required_vars=(DOMAIN CERT_DIR HOSTS)
     
     # ARRAY ITERATION: "${array[@]}" expands to all array elements
     for var in "${required_vars[@]}"; do
@@ -799,38 +799,6 @@ secure_cert_permissions() {
     fi
 }
 
-# BACKUP FUNCTION:
-# This function backs up certificates and configurations to a remote host
-# It demonstrates rsync with exclusions and directory testing
-perform_backups() {
-    log "Backing up certificates to $BACKUP_HOST"
-    
-    if [[ "$DRY_RUN" == true ]]; then
-        log "Would backup certificates to $BACKUP_HOST:${SSL_BACKUP_DIR:-/backup/ssl}"
-        # DIRECTORY TEST: -d checks if path exists and is a directory
-        if [[ -d /etc/nginx ]]; then
-            log "Would backup nginx configs to $BACKUP_HOST:${NGINX_BACKUP_DIR:-/backup/nginx}"
-        fi
-        return 0
-    fi
-    
-    # BACKUP SSL CERTIFICATES:
-    # rsync with SSH transport to remote backup host
-    # 2>&1 | logger redirects all output to system log
-    if ! rsync -aL -e "ssh $SSH_OPTS" "$CERT_DIR/" "root@$BACKUP_HOST.$DOMAIN:${SSL_BACKUP_DIR:-/backup/ssl}/" 2>&1 | logger -t cert-spreader; then
-        log "WARNING: Certificate backup failed"
-    fi
-    
-    # BACKUP NGINX CONFIGS (if nginx directory exists):
-    if [[ -d /etc/nginx ]]; then
-        # RSYNC WITH EXCLUSIONS:
-        # --exclude 'pattern' skips files/directories matching pattern
-        # This excludes the modules directory which may contain large files
-        if ! rsync -aL --exclude 'modules/*' -e "ssh $SSH_OPTS" /etc/nginx/ "root@$BACKUP_HOST.$DOMAIN:${NGINX_BACKUP_DIR:-/backup/nginx}/" 2>&1 | logger -t cert-spreader; then
-            log "WARNING: Nginx config backup failed"
-        fi
-    fi
-}
 
 # MAIN FUNCTION:
 # This is the primary orchestration function that coordinates all script operations
@@ -873,7 +841,7 @@ main() {
     fi
     
     # CERTIFICATE PROCESSING PHASE:
-    # Generate service certificates, secure permissions, backup, and deploy
+    # Generate service certificates, secure permissions, and deploy
     # Skip this entire phase in certain modes
     if [[ "$SERVICES_ONLY" != true && "$PROXMOX_ONLY" != true && "$PERMISSIONS_FIX" != true ]]; then
         # Generate certificates in formats needed by specific services
@@ -898,8 +866,6 @@ main() {
             log "Skipping local nginx reload (certificates unchanged)"
         fi
         
-        # BACKUP OPERATIONS:
-        perform_backups
         
         # CERTIFICATE DEPLOYMENT TO REMOTE HOSTS:
         local failed_hosts=()  # Array to track deployment failures

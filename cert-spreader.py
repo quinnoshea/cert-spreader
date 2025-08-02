@@ -43,7 +43,6 @@ class Config:
     """Configuration data structure"""
     domain: str = ""
     cert_dir: str = ""
-    backup_host: str = ""
     ssh_opts: str = "-o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new"
     log_file: str = "/var/log/cert-spreader.log"
     hosts: List[str] = field(default_factory=list)
@@ -55,8 +54,6 @@ class Config:
     plex_cert_password: str = "PASSWORD"
     znc_cert_enabled: bool = False
     znc_dhparam_file: str = ""
-    ssl_backup_dir: str = "/backup/ssl"
-    nginx_backup_dir: str = "/backup/nginx"
     # File permission configuration
     file_permissions: str = "644"        # Default permissions for certificate files
     privkey_permissions: str = "600"     # More restrictive permissions for private key
@@ -145,7 +142,6 @@ class CertSpreader:
             # Export all variables
             echo "DOMAIN=${{DOMAIN:-}}"
             echo "CERT_DIR=${{CERT_DIR:-}}"
-            echo "BACKUP_HOST=${{BACKUP_HOST:-}}"
             echo "SSH_OPTS=${{SSH_OPTS:-}}"
             echo "LOG_FILE=${{LOG_FILE:-}}"
             echo "HOSTS=${{HOSTS:-}}"
@@ -155,8 +151,6 @@ class CertSpreader:
             echo "ZNC_CERT_ENABLED=${{ZNC_CERT_ENABLED:-false}}"
             echo "PLEX_CERT_PASSWORD=${{PLEX_CERT_PASSWORD:-PASSWORD}}"
             echo "ZNC_DHPARAM_FILE=${{ZNC_DHPARAM_FILE:-}}"
-            echo "SSL_BACKUP_DIR=${{SSL_BACKUP_DIR:-/backup/ssl}}"
-            echo "NGINX_BACKUP_DIR=${{NGINX_BACKUP_DIR:-/backup/nginx}}"
             echo "FILE_PERMISSIONS=${{FILE_PERMISSIONS:-644}}"
             echo "PRIVKEY_PERMISSIONS=${{PRIVKEY_PERMISSIONS:-600}}"
             echo "DIRECTORY_PERMISSIONS=${{DIRECTORY_PERMISSIONS:-755}}"
@@ -180,11 +174,8 @@ class CertSpreader:
         # Map config variables to our Config object
         self.config.domain = config_vars.get('DOMAIN', '')
         self.config.cert_dir = config_vars.get('CERT_DIR', '')
-        self.config.backup_host = config_vars.get('BACKUP_HOST', '')
         self.config.ssh_opts = config_vars.get('SSH_OPTS', self.config.ssh_opts)
         self.config.log_file = config_vars.get('LOG_FILE', self.config.log_file)
-        self.config.ssl_backup_dir = config_vars.get('SSL_BACKUP_DIR', self.config.ssl_backup_dir)
-        self.config.nginx_backup_dir = config_vars.get('NGINX_BACKUP_DIR', self.config.nginx_backup_dir)
         
         # Parse HOSTS string into list
         hosts_str = config_vars.get('HOSTS', '')
@@ -215,7 +206,7 @@ class CertSpreader:
     
     def _validate_config(self) -> None:
         """Validate configuration values"""
-        required_vars = ['domain', 'cert_dir', 'backup_host', 'hosts']
+        required_vars = ['domain', 'cert_dir', 'hosts']
         validation_errors = 0
         
         for var in required_vars:
@@ -616,41 +607,6 @@ class CertSpreader:
         elif not self.dry_run:
             self.log("Certificate directory permissions secured")
     
-    def perform_backups(self) -> None:
-        """Backup certificates and configurations"""
-        self.log(f"Backing up certificates to {self.config.backup_host}")
-        
-        if self.dry_run:
-            self.log(f"Would backup certificates to {self.config.backup_host}:{self.config.ssl_backup_dir}")
-            if os.path.isdir('/etc/nginx'):
-                self.log(f"Would backup nginx configs to {self.config.backup_host}:{self.config.nginx_backup_dir}")
-            return
-        
-        # Backup SSL certificates
-        rsync_ssh = f"ssh {self.config.ssh_opts}"
-        rsync_cmd = [
-            'rsync', '-aL', '-e', rsync_ssh,
-            f'{self.config.cert_dir}/',
-            f'root@{self.config.backup_host}.{self.config.domain}:{self.config.ssl_backup_dir}/'
-        ]
-        
-        try:
-            subprocess.run(rsync_cmd, check=True, capture_output=True, timeout=300)
-        except (subprocess.SubprocessError, subprocess.TimeoutExpired):
-            self.log("WARNING: Certificate backup failed")
-        
-        # Backup nginx configs if directory exists
-        if os.path.isdir('/etc/nginx'):
-            rsync_cmd = [
-                'rsync', '-aL', '--exclude', 'modules/*', '-e', rsync_ssh,
-                '/etc/nginx/',
-                f'root@{self.config.backup_host}.{self.config.domain}:{self.config.nginx_backup_dir}/'
-            ]
-            
-            try:
-                subprocess.run(rsync_cmd, check=True, capture_output=True, timeout=300)
-            except (subprocess.SubprocessError, subprocess.TimeoutExpired):
-                self.log("WARNING: Nginx config backup failed")
     
     def reload_local_nginx(self) -> None:
         """Reload local nginx if certificates changed"""
@@ -695,8 +651,6 @@ class CertSpreader:
             # Reload local nginx
             self.reload_local_nginx()
             
-            # Backup operations
-            self.perform_backups()
             
             # Deploy certificates to remote hosts
             failed_hosts = []

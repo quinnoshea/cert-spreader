@@ -33,7 +33,6 @@ class TestConfig(unittest.TestCase):
         # Test basic defaults
         self.assertEqual(config.domain, "")
         self.assertEqual(config.cert_dir, "")
-        self.assertEqual(config.backup_host, "")
         self.assertEqual(config.ssh_opts, "-o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new")
         self.assertEqual(config.log_file, "/var/log/cert-spreader.log")
         
@@ -135,7 +134,6 @@ class TestConfigurationLoading(unittest.TestCase):
         config_content = '''
 DOMAIN="test.example.com"
 CERT_DIR="/etc/letsencrypt/live/test.example.com"
-BACKUP_HOST="backup-server"
 HOSTS="host1 host2 host3"
 HOST_SERVICES=(
     "host1:22:nginx"
@@ -169,7 +167,6 @@ FILE_GROUP=ssl-cert
         # Test basic configuration
         self.assertEqual(spreader.config.domain, "test.example.com")
         self.assertEqual(spreader.config.cert_dir, "/etc/letsencrypt/live/test.example.com")
-        self.assertEqual(spreader.config.backup_host, "backup-server")
         self.assertEqual(spreader.config.hosts, ["host1", "host2", "host3"])
         
         # Test arrays
@@ -195,7 +192,7 @@ FILE_GROUP=ssl-cert
         """Test validation with missing required variables"""
         config_content = '''
 DOMAIN="test.example.com"
-# Missing CERT_DIR, BACKUP_HOST, HOSTS
+# Missing CERT_DIR, HOSTS
 '''
         self.create_test_config(config_content)
         
@@ -410,7 +407,6 @@ class TestDryRunMode(unittest.TestCase):
         config_content = f'''
 DOMAIN="test.example.com"
 CERT_DIR="{self.test_cert_dir}"
-BACKUP_HOST="backup-server"
 HOSTS="host1 host2"
 '''
         with open(self.test_config, 'w') as f:
@@ -429,12 +425,6 @@ HOSTS="host1 host2"
              patch('os.access', return_value=True):
             spreader.load_config()
         
-        # Dry run should not make actual changes
-        with patch('subprocess.run') as mock_subprocess:
-            spreader.perform_backups()
-            
-            # In dry run, subprocess should not be called for actual operations
-            mock_subprocess.assert_not_called()
 
 
 class TestIntegration(unittest.TestCase):
