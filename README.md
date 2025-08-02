@@ -20,7 +20,7 @@ A comprehensive tool for securely deploying Let's Encrypt SSL certificates to mu
 - Standard Unix tools: `rsync`, `ssh`, `openssl`, `curl`, `sha256sum`, `head`, `awk`
 
 ### For Python Version (`cert-spreader.py`)
-- Python 3.7+ (no external dependencies - uses only standard library)
+- Python 3.7+ with `requests` library (`pip install requests`)
 - SSH access to target hosts with key-based authentication
 - Valid SSL certificates (Let's Encrypt recommended)
 - Standard Unix tools: `rsync`, `ssh`, `openssl`
@@ -141,6 +141,28 @@ post_hook = /path/to/cert-spreader.py
 # Or run manually after renewal
 certbot renew && /path/to/cert-spreader.sh
 ```
+
+## 📦 Installation
+
+### Python Version Requirements
+
+For the Python version (`cert-spreader.py`), you need to install the `requests` library:
+
+```bash
+# Install requests library
+pip install requests
+
+# Or using your system package manager
+# Ubuntu/Debian:
+sudo apt install python3-requests
+
+# RHEL/CentOS/Fedora:
+sudo dnf install python3-requests
+```
+
+### Bash Version Requirements
+
+The bash version (`cert-spreader.sh`) only requires standard Unix tools (rsync, ssh, openssl, curl).
 
 ## ⚙️ Configuration
 
@@ -285,7 +307,7 @@ fi
 
 | Feature | Bash Version | Python Version |
 |---------|-------------|----------------|
-| **Dependencies** | Standard Unix tools | Python 3.7+ only |
+| **Dependencies** | Standard Unix tools | Python 3.7+ + requests |
 | **Performance** | Very fast | Fast |
 | **Error Handling** | Good | Excellent |
 | **Debugging** | Standard bash debugging | Rich exception info |
@@ -421,7 +443,7 @@ See `TESTING.md` for detailed testing documentation and test coverage informatio
 This tool follows the principle of **simplicity with intelligence**:
 
 - **Linear execution**: Easy to understand and debug
-- **Minimal dependencies**: Uses standard Unix tools and Python standard library
+- **Minimal dependencies**: Uses standard Unix tools and Python with requests library
 - **Clear logging**: Simple, readable log messages with dry-run support
 - **Fail-fast**: Stops on errors rather than continuing with undefined state
 - **Idempotent**: Safe to run multiple times, only changes what's needed

@@ -17,10 +17,17 @@ from unittest.mock import patch, Mock, MagicMock
 from io import StringIO
 
 # Add the current directory to Python path to import cert-spreader
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__ if '__file__' in globals() else '.')))
 
 # Import the modules we want to test
-from cert_spreader import CertSpreader, Config, ExitCodes
+import importlib.util
+spec = importlib.util.spec_from_file_location("cert_spreader", "cert-spreader.py")
+cert_spreader = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(cert_spreader)
+
+CertSpreader = cert_spreader.CertSpreader
+Config = cert_spreader.Config
+ExitCodes = cert_spreader.ExitCodes
 
 
 class TestConfig(unittest.TestCase):

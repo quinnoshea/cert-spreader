@@ -13,18 +13,11 @@ import argparse
 import subprocess
 import hashlib
 import logging
-import json
-import urllib.request
-import urllib.parse
-import urllib.error
-import ssl
-import base64
+import requests
 import pwd
 import grp
-from pathlib import Path
-from typing import List, Dict, Optional, Tuple
+from typing import List, Optional, Tuple
 from dataclasses import dataclass, field
-from datetime import datetime
 
 
 # Error codes matching the bash version
@@ -472,15 +465,10 @@ class CertSpreader:
             
             # Check connectivity
             try:
-                # Create SSL context that ignores certificate verification
-                ctx = ssl.create_default_context()
-                ctx.check_hostname = False
-                ctx.verify_mode = ssl.CERT_NONE
-                
-                req = urllib.request.Request(node_url, method='GET')
-                with urllib.request.urlopen(req, timeout=30, context=ctx) as response:
-                    pass  # Just checking connectivity
-            except (urllib.error.URLError, OSError):
+                # Use requests with SSL verification disabled
+                response = requests.get(node_url, timeout=30, verify=False)
+                # Just checking connectivity - any response (even error) means it's reachable
+            except (requests.RequestException, OSError):
                 self.log(f"{node} unreachable, skipping")
                 continue
             
@@ -498,21 +486,28 @@ class CertSpreader:
                 'node': node
             }
             
-            # URL encode the data
-            encoded_data = urllib.parse.urlencode(data).encode('utf-8')
-            
-            # Create request
-            req = urllib.request.Request(api_url, data=encoded_data, method='POST')
-            req.add_header('Authorization', f'PVEAPIToken={user_realm}!{token_id}={self.config.proxmox_token}')
-            req.add_header('Content-Type', 'application/x-www-form-urlencoded')
+            # Prepare headers
+            headers = {
+                'Authorization': f'PVEAPIToken={user_realm}!{token_id}={self.config.proxmox_token}',
+                'Content-Type': 'application/x-www-form-urlencoded'
+            }
             
             try:
-                with urllib.request.urlopen(req, timeout=30, context=ctx) as response:
-                    if response.status == 200:
-                        self.log(f"Successfully updated {node} certificates")
-                    else:
-                        self.log(f"WARNING: {node} update failed with status {response.status}")
-            except urllib.error.URLError as e:
+                # Make POST request with SSL verification disabled
+                response = requests.post(
+                    api_url, 
+                    data=data, 
+                    headers=headers, 
+                    timeout=30, 
+                    verify=False
+                )
+                
+                if response.status_code == 200:
+                    self.log(f"Successfully updated {node} certificates")
+                else:
+                    self.log(f"WARNING: {node} update failed with status {response.status_code}")
+                    self.log(f"Response: {response.text}")
+            except requests.RequestException as e:
                 self.log(f"WARNING: {node} update failed: {e}")
     
     def _get_uid_gid(self) -> Tuple[int, int]:

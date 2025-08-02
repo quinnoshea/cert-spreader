@@ -26,6 +26,19 @@ Tests the Python implementation using unittest framework with coverage including
 - Dry-run mode testing
 - Integration tests
 
+## Testing Requirements
+
+### Python Testing Requirements
+
+For testing the Python version, you need:
+- Python 3.7+
+- `requests` library: `pip install requests`
+- `unittest.mock` (included in Python 3.3+)
+
+### Bash Testing Requirements
+
+For testing the Bash version, you only need standard Unix tools.
+
 ## Running Tests
 
 ### Run All Tests
@@ -168,7 +181,7 @@ The Python test framework uses Python's `tempfile` module to create temporary en
 
 - **Automatic Setup/Cleanup**: Each test class automatically creates and destroys temporary directories
 - **Isolated Tests**: Each test gets its own temporary directory to avoid interference
-- **Mock Objects**: Uses `unittest.mock` to simulate external dependencies (SSH, system calls, etc.)
+- **Mock Objects**: Uses `unittest.mock` to simulate external dependencies (SSH, system calls, HTTP requests, etc.)
 - **No Manual Cleanup**: Temporary files are automatically cleaned up after tests complete
 
 ## Configuration Used in Tests
@@ -334,7 +347,7 @@ AssertionError: SystemExit not raised
 - Tests don't make actual network connections
 
 ### Python Test Limitations  
-- Most external dependencies are mocked (SSH, system calls, etc.)
+- Most external dependencies are mocked (SSH, system calls, HTTP requests, etc.)
 - File system operations use temporary directories
 - Network operations are not tested (mocked)
 - Some tests require specific users/groups to exist for ownership testing
@@ -342,7 +355,7 @@ AssertionError: SystemExit not raised
 ### Common Limitations
 - No actual certificate deployment to remote hosts
 - No real service restarts
-- No actual Proxmox API calls
+- No actual Proxmox API calls (HTTP requests are mocked)
 - Permission changes are tested but may require root for full functionality
 
 ## Manual Testing
