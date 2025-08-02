@@ -116,6 +116,9 @@ python3 -m unittest test-cert-spreader.TestOwnerGroupFunctionality -v
 - SSH command building (`build_ssh_command`)
 - Permission checking (`check_permissions`)
 - Function sourcing capability
+- Custom certificate functions (`generate_service_certificates`, `generate_pkcs12_certificate`, `generate_concatenated_certificate`)
+- Certificate configuration parsing
+- Backward compatibility with legacy settings
 
 ### Python Test Categories (`test-cert-spreader.py`)
 
@@ -154,7 +157,18 @@ python3 -m unittest test-cert-spreader.TestOwnerGroupFunctionality -v
 - Dry-run mode execution
 - No-modification verification
 
-#### 8. Integration Tests (`TestIntegration`)
+#### 8. Custom Certificate Tests (`TestCustomCertificates`)
+- PKCS12/PFX certificate generation with passwords
+- PKCS12/PFX certificate generation without passwords
+- Concatenated certificate generation with DH parameters
+- Concatenated certificate generation without DH parameters
+- Array-based certificate configuration parsing
+- Individual setting configuration parsing
+- Backward compatibility with legacy PLEX_CERT_* and ZNC_CERT_* settings
+- Multiple certificate format support
+- Certificate filename customization
+
+#### 9. Integration Tests (`TestIntegration`)
 - Script executability
 - End-to-end functionality
 
@@ -198,6 +212,19 @@ HOST_SERVICES=(
 PROXMOX_USER="test@pve!testtoken"
 PROXMOX_TOKEN="fake-token"
 PROXMOX_NODES=("test-proxmox1" "test-proxmox2")
+
+# NEW: Custom certificate testing configuration
+CUSTOM_CERTIFICATES=(
+    "pkcs12:TestPassword123:test-plex.pfx"
+    "concatenated:/tmp/test-dhparam.pem:test-znc.pem"
+    "concatenated::test-simple.pem"
+)
+
+# Legacy settings for backward compatibility testing
+PLEX_CERT_ENABLED=true
+PLEX_CERT_PASSWORD="legacy-test-password"
+ZNC_CERT_ENABLED=true
+ZNC_DHPARAM_FILE="/tmp/test-dhparam.pem"
 ```
 
 ### Python Test Configuration
@@ -212,9 +239,27 @@ HOST_SERVICES=(
 PROXMOX_USER="test@pve!token"
 PROXMOX_TOKEN="fake-token"
 PROXMOX_NODES=("proxmox1" "proxmox2")
+# NEW: Flexible custom certificate testing configuration
+CUSTOM_CERTIFICATES=(
+    "pkcs12:TestPassword456:python-test.pfx"
+    "concatenated:/tmp/python-dhparam.pem:python-test.pem"
+)
+
+# Individual settings for additional testing
+PKCS12_ENABLED=true
+PKCS12_PASSWORD="individual-test-password"
+PKCS12_FILENAME="individual-test.pfx"
+CONCATENATED_ENABLED=true
+CONCATENATED_DHPARAM_FILE="/tmp/individual-dhparam.pem"
+CONCATENATED_FILENAME="individual-test.pem"
+
+# Legacy settings for backward compatibility testing
 PLEX_CERT_ENABLED=true
 PLEX_CERT_PASSWORD="testpass"
 ZNC_CERT_ENABLED=true
+ZNC_DHPARAM_FILE="/tmp/znc-dhparam.pem"
+
+# File ownership testing
 FILE_OWNER=nginx
 FILE_GROUP=ssl-cert
 ```
@@ -412,6 +457,129 @@ echo "Running Python tests..."
 echo "All tests passed!"
 ```
 
+## Testing Custom Certificate Functionality
+
+### New Flexible Certificate System
+
+The flexible certificate system introduced several new configuration options that need comprehensive testing:
+
+#### Array-Based Certificate Testing
+Test configurations using the `CUSTOM_CERTIFICATES` array:
+
+```bash
+# Test configuration with multiple certificate types
+CUSTOM_CERTIFICATES=(
+    "pkcs12:TestPassword123:app1.pfx"
+    "pkcs12::app2-nopass.pfx"
+    "concatenated:/etc/ssl/dhparam.pem:nginx.pem"
+    "concatenated::simple.pem"
+)
+```
+
+#### Individual Settings Testing
+Test configurations using individual certificate settings:
+
+```bash
+# Test PKCS12 individual settings
+PKCS12_ENABLED=true
+PKCS12_PASSWORD="test-password"
+PKCS12_FILENAME="custom-cert.pfx"
+
+# Test concatenated individual settings
+CONCATENATED_ENABLED=true
+CONCATENATED_DHPARAM_FILE="/etc/ssl/dhparam.pem"
+CONCATENATED_FILENAME="custom-combined.pem"
+```
+
+#### Backward Compatibility Testing
+Test that legacy settings still function:
+
+```bash
+# Legacy Plex settings should still work
+PLEX_CERT_ENABLED=true
+PLEX_CERT_PASSWORD="legacy-password"
+
+# Legacy ZNC settings should still work  
+ZNC_CERT_ENABLED=true
+ZNC_DHPARAM_FILE="/etc/ssl/dhparam.pem"
+```
+
+### Certificate Generation Test Scenarios
+
+#### PKCS12/PFX Testing
+- **With password**: Verify certificate generation with password protection
+- **Without password**: Verify certificate generation without password (empty password field)
+- **Custom filename**: Verify custom filename functionality
+- **Multiple certificates**: Test generating multiple PKCS12 certificates with different configurations
+
+#### Concatenated Certificate Testing
+- **With DH parameters**: Verify concatenation includes DH parameters when specified
+- **Without DH parameters**: Verify simple concatenation (privkey + cert + chain)
+- **Custom filename**: Verify custom filename functionality
+- **Multiple certificates**: Test generating multiple concatenated certificates
+
+#### Error Handling Testing
+Test error scenarios:
+- Invalid certificate array format
+- Missing certificate files
+- Invalid DH parameter files
+- Permission issues during certificate generation
+- OpenSSL command failures
+
+### Manual Certificate Testing
+
+#### Test Certificate Generation
+```bash
+# Test PKCS12 generation manually
+./cert-spreader.sh test-config.conf --dry-run
+# Verify output shows PKCS12 certificate generation commands
+
+# Test concatenated generation manually
+./cert-spreader.py test-config.conf --dry-run
+# Verify output shows concatenation commands with proper file order
+```
+
+#### Verify Generated Certificates
+```bash
+# After running without --dry-run, verify PKCS12 certificates
+openssl pkcs12 -in /etc/letsencrypt/live/domain/certificate.pfx -info -noout
+
+# Verify concatenated certificates contain all components
+cat /etc/letsencrypt/live/domain/combined.pem | grep -c "BEGIN"
+# Should show: 3 (privkey + cert + chain) or 4 (if DH params included)
+```
+
+#### Test Certificate Deployment
+```bash
+# Test that custom certificates are deployed alongside regular certificates
+# Check remote hosts have custom certificate files in correct locations
+ssh hostname.domain.com 'ls -la /etc/letsencrypt/live/domain/'
+```
+
+### Integration Testing
+
+#### Combined Configuration Testing
+Test configurations that mix multiple certificate types:
+
+```bash
+# Test configuration mixing all options
+CUSTOM_CERTIFICATES=(
+    "pkcs12:Password1:media-server.pfx"
+    "concatenated:/etc/ssl/dhparam.pem:web-server.pem"
+)
+PKCS12_ENABLED=true
+PKCS12_FILENAME="additional.pfx"
+CONCATENATED_ENABLED=true
+CONCATENATED_FILENAME="additional.pem"
+PLEX_CERT_ENABLED=true    # Legacy setting
+ZNC_CERT_ENABLED=true     # Legacy setting
+```
+
+#### Performance Testing  
+- Test certificate generation with large numbers of custom certificates
+- Verify deployment performance with multiple certificate types
+- Test memory usage with complex certificate configurations
+
 ## New Feature Testing
 
 When adding new features, ensure you test in both implementations:
@@ -419,5 +587,7 @@ When adding new features, ensure you test in both implementations:
 1. **Add Bash tests** to `test-cert-spreader.sh`
 2. **Add Python tests** to `test-cert-spreader.py`  
 3. **Test the new owner/group functionality** with different user configurations
-4. **Update this documentation** with any new test categories
-5. **Verify both implementations behave identically**
+4. **Test custom certificate functionality** with various certificate configurations
+5. **Update this documentation** with any new test categories
+6. **Verify both implementations behave identically**
+7. **Test backward compatibility** with legacy configurations

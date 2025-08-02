@@ -10,6 +10,7 @@ A comprehensive tool for securely deploying Let's Encrypt SSL certificates to mu
 - **Service Restart Intelligence**: Tries reload first, falls back to restart if needed
 - **Configurable Permissions**: Customizable file and directory permissions
 - **Certificate Change Tracking**: Only restarts services on hosts where certificates changed
+- **Flexible Certificate Generation**: Create PKCS12, concatenated, and custom certificate formats for any application
 
 ## 📋 Prerequisites
 
@@ -210,18 +211,97 @@ The `HOST_SERVICES` array uses the format: `"hostname:port:service1,service2"`
 - **port**: SSH port (22 is default)
 - **services**: Comma-separated list of systemd services to reload/restart
 
-### Service Certificate Generation
+### Flexible Custom Certificate Generation
 
-The scripts can generate specialized certificate formats:
+**NEW**: The scripts now support flexible, user-configurable certificate generation for any application that needs specialized certificate formats.
+
+#### Array-Based Configuration (Recommended)
 
 ```bash
-# Enable Plex PKCS12 certificate
+# Flexible certificate generation using arrays
+CUSTOM_CERTIFICATES=(
+    "pkcs12:your-password:application.pfx"          # PKCS12/PFX with password
+    "pkcs12::no-password-cert.pfx"                  # PKCS12/PFX without password
+    "concatenated:/etc/ssl/dhparam.pem:nginx.pem"   # Concatenated with DH params
+    "concatenated::simple-combined.pem"             # Simple concatenated cert
+)
+```
+
+#### Individual Settings Configuration
+
+```bash
+# PKCS12/PFX certificate generation
+PKCS12_ENABLED=true
+PKCS12_PASSWORD="your-password"      # Optional - leave empty for no password
+PKCS12_FILENAME="certificate.pfx"    # Custom filename
+
+# Concatenated certificate generation  
+CONCATENATED_ENABLED=true
+CONCATENATED_DHPARAM_FILE="/etc/nginx/ssl/dhparam.pem"  # Optional DH parameters
+CONCATENATED_FILENAME="combined.pem"                    # Custom filename
+```
+
+#### Backward Compatibility (Legacy Settings)
+
+```bash
+# Legacy Plex and ZNC settings still work
 PLEX_CERT_ENABLED=true
 PLEX_CERT_PASSWORD="your-password"
-
-# Enable ZNC certificate bundle
 ZNC_CERT_ENABLED=true
 ZNC_DHPARAM_FILE="/etc/nginx/ssl/dhparam.pem"
+```
+
+#### Certificate Types Supported
+
+- **PKCS12/PFX**: Perfect for applications like Plex, Windows services, or any application requiring PKCS12 format
+  - Configurable password (optional)
+  - Custom filenames
+  - Multiple certificates supported
+  
+- **Concatenated**: Ideal for applications like ZNC, nginx, or services needing combined certificates
+  - Private key + certificate + chain in one file
+  - Optional DH parameters inclusion
+  - Custom filenames
+  - Multiple certificates supported
+
+#### Practical Examples
+
+**For Plex Media Server:**
+```bash
+CUSTOM_CERTIFICATES=(
+    "pkcs12:MyPlexPassword:plex-server.pfx"
+)
+```
+
+**For ZNC IRC Bouncer:**
+```bash
+CUSTOM_CERTIFICATES=(
+    "concatenated:/etc/ssl/dhparam.pem:znc.pem"
+)
+```
+
+**For Multiple Applications:**
+```bash
+CUSTOM_CERTIFICATES=(
+    "pkcs12:PlexPass123:plex.pfx"                    # Plex Media Server
+    "concatenated:/etc/ssl/dhparam.pem:nginx.pem"     # Nginx with DH params
+    "concatenated::znc.pem"                          # ZNC without DH params
+    "pkcs12::windows-service.pfx"                    # Windows service (no password)
+)
+```
+
+**Mixed Configuration (using both formats):**
+```bash
+# Array for multiple certificates
+CUSTOM_CERTIFICATES=(
+    "pkcs12:secret:app1.pfx"
+    "concatenated::app2.pem"
+)
+
+# Individual settings for additional certificates
+PKCS12_ENABLED=true
+PKCS12_FILENAME="additional-app.pfx"  
+PKCS12_PASSWORD="another-password"
 ```
 
 ### Configurable Certificate Permissions and Ownership
@@ -296,6 +376,18 @@ Copy and customize the example file:
 # Create your environment file
 cp secrets.env.example secrets.env
 nano secrets.env
+
+# Example secrets.env content:
+export DOMAIN="yourdomain.com"
+export PROXMOX_TOKEN="your-real-token"
+export CUSTOM_CERTIFICATES=(
+    "pkcs12:YourSecretPassword:plex.pfx"
+    "concatenated:/etc/ssl/dhparam.pem:nginx.pem"
+)
+export FILE_PERMISSIONS="644"
+export PRIVKEY_PERMISSIONS="600"
+export FILE_OWNER="root"
+export FILE_GROUP="ssl-cert"
 
 # Modify script to source it (add to beginning of cert-spreader.sh):
 if [[ -f "secrets.env" ]]; then
