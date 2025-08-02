@@ -77,3 +77,4 @@ notes.txt
 secrets.env
 originals/
 python/
+__pycache__
