@@ -43,6 +43,7 @@ class Config:
     proxmox_nodes: List[str] = field(default_factory=list)
     proxmox_user: str = ""
     proxmox_token: str = ""
+    proxmox_verify_ssl: bool = False  # Default to False for self-signed Proxmox certs
     # Custom certificate generation configuration
     custom_certificates: List[str] = field(default_factory=list)
     # Backward compatibility settings
@@ -145,6 +146,7 @@ class CertSpreader:
             echo "HOSTS=${{HOSTS:-}}"
             echo "PROXMOX_USER=${{PROXMOX_USER:-}}"
             echo "PROXMOX_TOKEN=${{PROXMOX_TOKEN:-}}"
+            echo "PROXMOX_VERIFY_SSL=${{PROXMOX_VERIFY_SSL:-false}}"
             echo "PKCS12_ENABLED=${{PKCS12_ENABLED:-false}}"
             echo "PKCS12_PASSWORD=${{PKCS12_PASSWORD:-}}"
             echo "PKCS12_FILENAME=${{PKCS12_FILENAME:-certificate.pfx}}"
@@ -184,6 +186,7 @@ class CertSpreader:
         # Parse Proxmox configuration
         self.config.proxmox_user = config_vars.get('PROXMOX_USER', '')
         self.config.proxmox_token = config_vars.get('PROXMOX_TOKEN', '')
+        self.config.proxmox_verify_ssl = config_vars.get('PROXMOX_VERIFY_SSL', 'false').lower() == 'true'
         
         # Parse new certificate configuration
         self.config.pkcs12_enabled = config_vars.get('PKCS12_ENABLED', 'false').lower() == 'true'
@@ -523,8 +526,8 @@ class CertSpreader:
             
             # Check connectivity
             try:
-                # Use requests with SSL verification disabled
-                response = requests.get(node_url, timeout=30, verify=False)
+                # Check connectivity with configurable SSL verification (default False for self-signed certs)
+                response = requests.get(node_url, timeout=30, verify=self.config.proxmox_verify_ssl)
                 # Just checking connectivity - any response (even error) means it's reachable
             except (requests.RequestException, OSError):
                 self.log(f"{node} unreachable, skipping")
@@ -551,13 +554,15 @@ class CertSpreader:
             }
             
             try:
-                # Make POST request with SSL verification disabled
+                # Make POST request with configurable SSL verification
+                # Default False for Proxmox environments with self-signed certificates
+                # The API token provides authentication security
                 response = requests.post(
                     api_url, 
                     data=data, 
                     headers=headers, 
                     timeout=30, 
-                    verify=False
+                    verify=self.config.proxmox_verify_ssl
                 )
                 
                 if response.status_code == 200:
