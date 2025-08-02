@@ -177,7 +177,6 @@ The Python test framework uses Python's `tempfile` module to create temporary en
 ```bash
 DOMAIN="test.example.com"
 CERT_DIR="/tmp/cert-spreader-tests/certs"
-BACKUP_HOST="test-backup"
 HOSTS="test-host1 test-host2"
 HOST_SERVICES=(
     "test-host1:22:nginx"
@@ -192,7 +191,6 @@ PROXMOX_NODES=("test-proxmox1" "test-proxmox2")
 ```bash
 DOMAIN="test.example.com"
 CERT_DIR="/tmp/test-cert-dir"
-BACKUP_HOST="backup-server"
 HOSTS="host1 host2 host3"
 HOST_SERVICES=(
     "host1:22:nginx"

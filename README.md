@@ -150,7 +150,6 @@ certbot renew && /path/to/cert-spreader.sh
 # Basic settings
 DOMAIN="yourdomain.com"
 CERT_DIR="/etc/letsencrypt/live/yourdomain.com"
-BACKUP_HOST="backup-server"
 
 # SSH settings
 SSH_OPTS="-o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new"
