@@ -81,4 +81,8 @@ python/
 __pycache__
 todo.txt
 README_new.md
-.coverage
+# === COVERAGE FILES ===
+.coverage                   # Coverage data file
+coverage.xml                # Coverage XML report
+htmlcov/                    # Coverage HTML report directory
+.pytest_cache/              # Pytest cache
