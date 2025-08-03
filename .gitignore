@@ -29,6 +29,8 @@ local.yml                   # Local config
 *.csr                       # Certificate signing requests
 *.bundle                    # CA bundle files
 *.ca-bundle                 # CA bundle files (alternative naming)
+*.jks                       # Java KeyStore files
+*.keystore                  # Java KeyStore files (alternative naming)
 
 # === LOG FILES ===
 *.log                       # Log files
