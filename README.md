@@ -1,5 +1,16 @@
 # Certificate Spreader
 
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+![Language](https://img.shields.io/badge/Bash%20%26%20Python-3.7+-informational)
+[![Codacy Badge](https://app.codacy.com/project/badge/Grade/2b2bed5783c842dc89ab5c56adcb2896)](https://app.codacy.com?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade)
+![Status](https://img.shields.io/badge/status-active-success)
+
+> **Deploy and manage Let's Encrypt SSL certificates across multiple hosts and services — safely, automatically, and with full audit logging.**
+>
+> Runs in **both Bash and Python** with identical functionality.
+
+---
+
 A comprehensive tool for securely deploying Let's Encrypt SSL certificates to multiple hosts and services. Available in both Bash and Python implementations with identical functionality.
 
 ## 🔒 Security Features
@@ -554,9 +565,20 @@ This tool follows the principle of **simplicity with intelligence**:
 
 ## 📄 License
 
-MIT License - see LICENSE file for details.
+Licensed under the **Apache License, Version 2.0** (the "License");  
+you may not use this file except in compliance with the License.  
+You may obtain a copy at:
 
-This project is open source and freely available for use, modification, and distribution.
+> http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by law or agreed to in writing, software  
+distributed under the License is distributed on an **"AS IS" BASIS**,  
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND.  
+See the License for the specific language governing permissions and  
+limitations under the License.
+
+**Attribution Requirement:**  
+If you publicly use or modify this project, you must credit the original author in your documentation or README.
 
 ---
 
