@@ -61,9 +61,7 @@ PKCS12_PASSWORD="individual-pass"
 PKCS12_FILENAME="individual.pfx"
 CONCATENATED_ENABLED=true
 CONCATENATED_FILENAME="individual-combined.pem"
-# Legacy settings (disabled)
-PLEX_CERT_ENABLED=false
-ZNC_CERT_ENABLED=false
+# Legacy settings have been removed
 EOF
     
     # Set proper permissions on test files
@@ -391,12 +389,7 @@ test_custom_certificate_security() {
             assert_failure 0 "secure_custom_certificates should process individual certificate settings"
         fi
         
-        # Check for backward compatibility
-        if [[ "$function_body" == *"PLEX_CERT_ENABLED"* && "$function_body" == *"ZNC_CERT_ENABLED"* ]]; then
-            assert_success 0 "secure_custom_certificates maintains backward compatibility"
-        else
-            assert_failure 0 "secure_custom_certificates should maintain backward compatibility"
-        fi
+        # Backward compatibility has been removed
     else
         assert_failure 0 "secure_custom_certificates function should exist"
     fi

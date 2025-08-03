@@ -474,7 +474,7 @@ class TestIntegration(unittest.TestCase):
         result = subprocess.run([sys.executable, script_path, "--help"], 
                               capture_output=True, text=True)
         self.assertEqual(result.returncode, 0)
-        self.assertIn("Usage:", result.stdout)
+        self.assertIn("usage:", result.stdout)
         
         # Test invalid config file
         result = subprocess.run([sys.executable, script_path, "nonexistent.conf", "--dry-run"], 
@@ -625,32 +625,6 @@ CONCATENATED_FILENAME="combined.pem"
         # Verify permissions were set
         mock_chmod.assert_called()
     
-    def test_backward_compatibility(self):
-        """Test that old PLEX_CERT and ZNC_CERT settings still work"""
-        config_content = f'''
-DOMAIN="test.example.com"
-CERT_DIR="{self.test_cert_dir}"
-HOSTS="host1"
-PLEX_CERT_ENABLED=true
-PLEX_CERT_PASSWORD="legacy-password"
-ZNC_CERT_ENABLED=true
-ZNC_DHPARAM_FILE="/etc/ssl/dhparam.pem"
-'''
-        with open(self.test_config, 'w') as f:
-            f.write(config_content)
-        
-        spreader = CertSpreader(self.test_config)
-        with patch('os.path.isdir', return_value=True), \
-             patch('os.access', return_value=True):
-            spreader.load_config()
-        
-        # Verify backward compatibility conversion
-        self.assertTrue(spreader.config.pkcs12_enabled)
-        self.assertEqual(spreader.config.pkcs12_password, "legacy-password")
-        self.assertEqual(spreader.config.pkcs12_filename, "plex-certificate.pfx")
-        self.assertTrue(spreader.config.concatenated_enabled)
-        self.assertEqual(spreader.config.concatenated_dhparam_file, "/etc/ssl/dhparam.pem")
-        self.assertEqual(spreader.config.concatenated_filename, "znc.pem")
 
 
 if __name__ == '__main__':
