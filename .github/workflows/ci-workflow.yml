@@ -26,21 +26,34 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install requests
+        sudo apt-get update
+        sudo apt-get install -y python3-coverage
         python --version
         pip list
+        which coverage || which python3-coverage
+        coverage --version || python3-coverage --version
 
-    - name: Run Python tests
+    - name: Run Python tests with coverage
       run: |
-        python -c "
-        import sys, os, unittest
-        sys.path.insert(0, '.')
-        # Import the test module
-        spec = __import__('importlib.util', fromlist=['spec_from_file_location']).spec_from_file_location('test_cert_spreader', 'test-cert-spreader.py')
-        test_module = __import__('importlib.util', fromlist=['module_from_spec']).module_from_spec(spec)
-        spec.loader.exec_module(test_module)
-        # Run tests
-        unittest.main(module=test_module, verbosity=2, exit=False)
-        "
+        # Use whichever coverage command is available
+        if command -v coverage >/dev/null 2>&1; then
+          COVERAGE_CMD="coverage"
+        elif command -v python3-coverage >/dev/null 2>&1; then
+          COVERAGE_CMD="python3-coverage"
+        else
+          echo "No coverage command found"
+          exit 1
+        fi
+        
+        $COVERAGE_CMD run --source=. test-cert-spreader.py
+        $COVERAGE_CMD xml
+        $COVERAGE_CMD report
+
+    - name: Upload coverage to Codacy
+      uses: codacy/codacy-coverage-reporter-action@v1
+      with:
+        project-token: ${{ secrets.CODACY_PROJECT_TOKEN }}
+        coverage-reports: coverage.xml
 
     - name: Run Bash tests
       run: |
