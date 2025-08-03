@@ -81,3 +81,4 @@ python/
 __pycache__
 todo.txt
 README_new.md
+.coverage
