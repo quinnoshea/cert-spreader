@@ -86,3 +86,7 @@ README_new.md
 coverage.xml                # Coverage XML report
 htmlcov/                    # Coverage HTML report directory
 .pytest_cache/              # Pytest cache
+
+# Additional coverage ignore (at end to ensure precedence)
+.coverage
+coverage.xml
