@@ -347,23 +347,48 @@ class CertSpreader:
     
     def _generate_custom_certificate(self, cert_config: str) -> None:
         """Generate a custom certificate based on configuration string"""
-        # Parse configuration: "type:password:filename" or "type:dhparam_file:filename"
+        # Parse configuration: "type:param:filename"
         parts = cert_config.split(':', 2)
-        if len(parts) < 2:
+        if len(parts) < 1:
             self.log(f"ERROR: Invalid custom certificate config: {cert_config}")
             return
         
         cert_type = parts[0].lower()
         param = parts[1] if len(parts) > 1 else ''
-        filename = parts[2] if len(parts) > 2 else f"custom-{cert_type}.pem"
+        filename = parts[2] if len(parts) > 2 else self._get_default_filename(cert_type)
         
-        if cert_type == 'pkcs12':
-            self._generate_pkcs12_certificate(filename, param)
-        elif cert_type == 'concatenated':
-            # For concatenated, param is the dhparam file path
-            self._generate_concatenated_certificate(filename, param)
+        # Certificate type dispatch table
+        cert_generators = {
+            'pkcs12': lambda: self._generate_pkcs12_certificate(filename, param),
+            'concatenated': lambda: self._generate_concatenated_certificate(filename, param),
+            'der': lambda: self._generate_der_certificate(filename),
+            'pkcs7': lambda: self._generate_pkcs7_certificate(filename),
+            'p7b': lambda: self._generate_pkcs7_certificate(filename),  # Alias for pkcs7
+            'crt': lambda: self._generate_crt_certificate(filename),
+            'pem': lambda: self._generate_pem_certificate(filename),
+            'bundle': lambda: self._generate_bundle_certificate(filename)
+        }
+        
+        generator = cert_generators.get(cert_type)
+        if generator:
+            generator()
         else:
             self.log(f"ERROR: Unknown certificate type: {cert_type}")
+            self.log(f"Supported types: {', '.join(cert_generators.keys())}")
+    
+    def _get_default_filename(self, cert_type: str) -> str:
+        """Get default filename for certificate type"""
+        defaults = {
+            'pkcs12': 'certificate.pfx',
+            'concatenated': 'combined.pem',
+            'der': 'certificate.der',
+            'pkcs7': 'certificate.p7b',
+            'p7b': 'certificate.p7b',
+            'crt': 'certificate.crt',
+            'pem': 'certificate.pem',
+            'bundle': 'ca-bundle.pem'
+        }
+        return defaults.get(cert_type, f"certificate.{cert_type}")
     
     def _generate_pkcs12_certificate(self, filename: str, password: str = '') -> None:
         """Generate PKCS12/PFX certificate"""
@@ -424,6 +449,117 @@ class CertSpreader:
             self.local_cert_changed = True
         except IOError as e:
             self.log(f"ERROR: Failed to generate concatenated certificate {filename}: {e}")
+    
+    def _generate_der_certificate(self, filename: str) -> None:
+        """Generate DER certificate for Java/Android"""
+        self.log(f"Generating DER certificate: {filename}")
+        cert_path = os.path.join(self.config.cert_dir, filename)
+        
+        if self.dry_run:
+            self.log(f"Would generate DER certificate: {cert_path}")
+            return
+        
+        # Convert PEM to DER format
+        openssl_cmd = [
+            'openssl', 'x509', 
+            '-in', os.path.join(self.config.cert_dir, 'cert.pem'),
+            '-outform', 'der',
+            '-out', cert_path
+        ]
+        
+        try:
+            subprocess.run(openssl_cmd, check=True, capture_output=True)
+            os.chmod(cert_path, 0o644)
+            self.log(f"Generated DER certificate: {filename}")
+            self.local_cert_changed = True
+        except subprocess.SubprocessError as e:
+            self.log(f"ERROR: Failed to generate DER certificate {filename}: {e}")
+    
+    def _generate_pkcs7_certificate(self, filename: str) -> None:
+        """Generate PKCS#7 certificate for Windows/Java trust chains"""
+        self.log(f"Generating PKCS#7 certificate: {filename}")
+        cert_path = os.path.join(self.config.cert_dir, filename)
+        
+        if self.dry_run:
+            self.log(f"Would generate PKCS#7 certificate: {cert_path}")
+            return
+        
+        # Create PKCS#7 certificate bundle
+        openssl_cmd = [
+            'openssl', 'crl2pkcs7',
+            '-certfile', os.path.join(self.config.cert_dir, 'fullchain.pem'),
+            '-out', cert_path,
+            '-nocrl'
+        ]
+        
+        try:
+            subprocess.run(openssl_cmd, check=True, capture_output=True)
+            os.chmod(cert_path, 0o644)
+            self.log(f"Generated PKCS#7 certificate: {filename}")
+            self.local_cert_changed = True
+        except subprocess.SubprocessError as e:
+            self.log(f"ERROR: Failed to generate PKCS#7 certificate {filename}: {e}")
+    
+    def _generate_crt_certificate(self, filename: str) -> None:
+        """Generate individual CRT certificate file"""
+        self.log(f"Generating CRT certificate: {filename}")
+        cert_path = os.path.join(self.config.cert_dir, filename)
+        
+        if self.dry_run:
+            self.log(f"Would generate CRT certificate: {cert_path}")
+            return
+        
+        try:
+            # Copy cert.pem to .crt file
+            import shutil
+            shutil.copy2(os.path.join(self.config.cert_dir, 'cert.pem'), cert_path)
+            os.chmod(cert_path, 0o644)
+            self.log(f"Generated CRT certificate: {filename}")
+            self.local_cert_changed = True
+        except IOError as e:
+            self.log(f"ERROR: Failed to generate CRT certificate {filename}: {e}")
+    
+    def _generate_pem_certificate(self, filename: str) -> None:
+        """Generate individual PEM certificate file"""
+        self.log(f"Generating PEM certificate: {filename}")
+        cert_path = os.path.join(self.config.cert_dir, filename)
+        
+        if self.dry_run:
+            self.log(f"Would generate PEM certificate: {cert_path}")
+            return
+        
+        try:
+            # Copy fullchain.pem to custom filename
+            import shutil
+            shutil.copy2(os.path.join(self.config.cert_dir, 'fullchain.pem'), cert_path)
+            os.chmod(cert_path, 0o644)
+            self.log(f"Generated PEM certificate: {filename}")
+            self.local_cert_changed = True
+        except IOError as e:
+            self.log(f"ERROR: Failed to generate PEM certificate {filename}: {e}")
+    
+    def _generate_bundle_certificate(self, filename: str) -> None:
+        """Generate CA bundle certificate file"""
+        self.log(f"Generating CA bundle certificate: {filename}")
+        cert_path = os.path.join(self.config.cert_dir, filename)
+        
+        if self.dry_run:
+            self.log(f"Would generate CA bundle certificate: {cert_path}")
+            return
+        
+        try:
+            # Copy chain.pem (CA bundle) to custom filename
+            chain_path = os.path.join(self.config.cert_dir, 'chain.pem')
+            if os.path.exists(chain_path):
+                import shutil
+                shutil.copy2(chain_path, cert_path)
+                os.chmod(cert_path, 0o644)
+                self.log(f"Generated CA bundle certificate: {filename}")
+                self.local_cert_changed = True
+            else:
+                self.log(f"WARNING: chain.pem not found, cannot generate CA bundle: {filename}")
+        except IOError as e:
+            self.log(f"ERROR: Failed to generate CA bundle certificate {filename}: {e}")
     
     def restart_services(self) -> None:
         """Restart services on remote hosts with reload fallback"""

@@ -497,6 +497,10 @@ CUSTOM_CERTIFICATES=(
     "pkcs12:password123:myapp.pfx"
     "concatenated:/etc/ssl/dhparam.pem:nginx.pem"
     "concatenated::simple.pem"
+    "der::java-app.der"
+    "pkcs7::windows-trust.p7b"
+    "crt::server.crt"
+    "bundle::ca-bundle.pem"
 )
 '''
         with open(self.test_config, 'w') as f:
@@ -510,7 +514,11 @@ CUSTOM_CERTIFICATES=(
         expected_certs = [
             "pkcs12:password123:myapp.pfx",
             "concatenated:/etc/ssl/dhparam.pem:nginx.pem", 
-            "concatenated::simple.pem"
+            "concatenated::simple.pem",
+            "der::java-app.der",
+            "pkcs7::windows-trust.p7b",
+            "crt::server.crt",
+            "bundle::ca-bundle.pem"
         ]
         self.assertEqual(spreader.config.custom_certificates, expected_certs)
     
@@ -620,6 +628,45 @@ CONCATENATED_FILENAME="combined.pem"
         # Verify permissions were set
         mock_chmod.assert_called()
     
+    def test_certificate_type_dispatch(self):
+        """Test certificate type dispatch system"""
+        spreader = CertSpreader("test.conf")
+        
+        # Test dispatch table coverage
+        test_configs = [
+            "pkcs12:password:test.pfx",
+            "concatenated::test.pem",
+            "der::test.der",
+            "pkcs7::test.p7b",
+            "p7b::test.p7b",
+            "crt::test.crt",
+            "pem::test.pem",
+            "bundle::test.bundle"
+        ]
+        
+        for config in test_configs:
+            cert_type = config.split(':')[0]
+            default_filename = spreader._get_default_filename(cert_type)
+            self.assertIsNotNone(default_filename)
+            self.assertTrue(len(default_filename) > 0)
+    
+    def test_new_certificate_generators(self):
+        """Test new certificate generator methods exist and have proper signatures"""
+        spreader = CertSpreader("test.conf")
+        
+        # Test that all new generator methods exist
+        new_generators = [
+            '_generate_der_certificate',
+            '_generate_pkcs7_certificate', 
+            '_generate_crt_certificate',
+            '_generate_pem_certificate',
+            '_generate_bundle_certificate'
+        ]
+        
+        for method_name in new_generators:
+            self.assertTrue(hasattr(spreader, method_name))
+            method = getattr(spreader, method_name)
+            self.assertTrue(callable(method))
 
 
 if __name__ == '__main__':

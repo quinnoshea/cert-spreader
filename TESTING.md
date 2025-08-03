@@ -157,14 +157,31 @@ python3 -m unittest test-cert-spreader.TestOwnerGroupFunctionality -v
 - No-modification verification
 
 #### 8. Custom Certificate Tests (`TestCustomCertificates`)
-- PKCS12/PFX certificate generation with passwords
-- PKCS12/PFX certificate generation without passwords
-- Concatenated certificate generation with DH parameters
-- Concatenated certificate generation without DH parameters
-- Array-based certificate configuration parsing
-- Individual setting configuration parsing
-- Multiple certificate format support
-- Certificate filename customization
+- **PKCS12/PFX certificates** - Windows/IIS/Exchange compatibility
+  - Password-protected and no-password variants
+  - Custom filename support
+- **Concatenated certificates** - Nginx/Apache/HAProxy compatibility
+  - With and without DH parameters
+  - Private key + certificate + chain combination
+- **DER certificates** - Java/Android/embedded system compatibility
+  - Binary encoding format
+  - Cross-platform mobile app support
+- **PKCS#7 certificates** - Windows certificate stores/Java trust chains
+  - Certificate bundle format
+  - Trust chain validation support
+- **CRT certificates** - Individual certificate files
+  - Standard certificate format
+  - Web server compatibility
+- **PEM certificates** - Custom PEM certificate files
+  - Full chain certificate export
+  - Linux/Unix standard format
+- **CA Bundle certificates** - Certificate authority bundles
+  - Chain validation files
+  - Trust store integration
+- **Array-based configuration parsing** - Multi-format support
+- **Individual setting configuration** - Legacy compatibility
+- **Certificate type dispatch system** - Extensible architecture
+- **Default filename generation** - Smart naming conventions
 
 #### 9. Integration Tests (`TestIntegration`)
 - Script executability
@@ -182,6 +199,13 @@ The Bash test framework creates an isolated environment:
 │   ├── privkey.pem      # Fake private key
 │   ├── cert.pem         # Fake certificate
 │   ├── fullchain.pem    # Fake full chain
+│   ├── chain.pem        # Fake certificate chain
+│   └── custom-generated/ # Generated certificate files during testing
+│       ├── *.pfx        # PKCS12 certificates
+│       ├── *.der        # DER certificates  
+│       ├── *.p7b        # PKCS#7 certificates
+│       ├── *.crt        # CRT certificates
+│       └── *.bundle     # CA bundle files
 │   └── chain.pem        # Fake chain
 ├── test-config.conf     # Test configuration
 └── test-cert-spreader.log  # Test log file

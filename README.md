@@ -224,21 +224,63 @@ The `HOST_SERVICES` array uses the format: `"hostname:port:service1,service2"`
 - **port**: SSH port (22 is default)
 - **services**: Comma-separated list of systemd services to reload/restart
 
-### Flexible Custom Certificate Generation
+### Comprehensive Custom Certificate Generation
 
-**NEW**: The scripts now support flexible, user-configurable certificate generation for any application that needs specialized certificate formats.
+**ENHANCED**: The scripts now support multiple certificate formats for cross-platform compatibility and specialized application requirements.
+
+#### Supported Certificate Types
+
+| Type | Extension | Use Case | Platform Compatibility |
+|------|-----------|----------|----------------------|
+| **pkcs12** | `.pfx`, `.p12` | Windows IIS, Exchange, client certificates | Windows, Cross-platform |
+| **concatenated** | `.pem` | Nginx, Apache, HAProxy, load balancers | Linux, Unix |
+| **der** | `.der`, `.crt` | Java applications, Android, embedded systems | Java, Android, Mobile |
+| **pkcs7** | `.p7b`, `.p7c` | Windows certificate stores, Java trust chains | Windows, Java |
+| **crt** | `.crt` | Individual certificate files, web servers | Cross-platform |
+| **pem** | `.pem` | Custom PEM certificate files | Linux, Unix |
+| **bundle** | `.bundle`, `.pem` | CA certificate bundles, trust stores | Cross-platform |
 
 #### Array-Based Configuration (Recommended)
 
 ```bash
-# Flexible certificate generation using arrays
+# Comprehensive certificate generation using arrays
 CUSTOM_CERTIFICATES=(
-    "pkcs12:your-password:application.pfx"          # PKCS12/PFX with password
-    "pkcs12::no-password-cert.pfx"                  # PKCS12/PFX without password
-    "concatenated:/etc/ssl/dhparam.pem:nginx.pem"   # Concatenated with DH params
-    "concatenated::simple-combined.pem"             # Simple concatenated cert
+    # PKCS12 certificates for Windows/IIS/Exchange
+    "pkcs12:your-password:application.pfx"          # With password
+    "pkcs12::no-password-cert.pfx"                  # Without password
+    
+    # Concatenated certificates for web servers
+    "concatenated:/etc/ssl/dhparam.pem:nginx.pem"   # With DH parameters
+    "concatenated::simple-combined.pem"             # Simple concatenated
+    
+    # DER certificates for Java/Android
+    "der::java-app.der"                             # Java application
+    "der::android-app.crt"                          # Android application
+    
+    # PKCS#7 certificates for Windows/Java trust chains  
+    "pkcs7::windows-trust.p7b"                      # Windows trust store
+    "p7b::java-trust.p7b"                           # Java trust chain
+    
+    # Individual certificate files
+    "crt::server.crt"                               # Server certificate
+    "pem::custom-cert.pem"                          # Custom PEM certificate
+    
+    # CA bundle files
+    "bundle::ca-certificates.pem"                   # CA bundle
 )
 ```
+
+#### Configuration Format
+
+**Format**: `"type:param:filename"`
+- **type**: Certificate type (pkcs12, concatenated, der, pkcs7, p7b, crt, pem, bundle)
+- **param**: Optional parameter (password for PKCS12, dhparam file for concatenated)
+- **filename**: Optional custom filename (defaults to appropriate extension)
+
+**Examples:**
+- `"pkcs12:mypassword:app.pfx"` - PKCS12 with password and custom filename
+- `"der::"` - DER certificate with default filename (certificate.der)
+- `"concatenated:/etc/ssl/dhparam.pem:nginx.pem"` - Concatenated with DH params
 
 #### Individual Settings Configuration
 

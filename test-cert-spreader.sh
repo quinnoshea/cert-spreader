@@ -54,6 +54,11 @@ PROXMOX_NODES=("test-proxmox1" "test-proxmox2")
 CUSTOM_CERTIFICATES=(
     "pkcs12:testpass:test-app.pfx"
     "concatenated::test-combined.pem"
+    "der::test-java.der"
+    "pkcs7::test-windows.p7b"
+    "crt::test-server.crt"
+    "pem::test-custom.pem"
+    "bundle::test-bundle.pem"
 )
 # Individual settings for testing
 PKCS12_ENABLED=true
@@ -348,23 +353,25 @@ test_custom_certificate_functions() {
     fi
     
     # Test individual certificate generation functions
-    if declare -f generate_pkcs12_certificate >/dev/null 2>&1; then
-        assert_success 0 "generate_pkcs12_certificate function exists"
-    else
-        assert_failure 0 "generate_pkcs12_certificate function should exist"
-    fi
+    local cert_functions=(
+        "generate_pkcs12_certificate"
+        "generate_concatenated_certificate"
+        "generate_custom_certificate"
+        "generate_der_certificate"
+        "generate_pkcs7_certificate"
+        "generate_crt_certificate"
+        "generate_pem_certificate"
+        "generate_bundle_certificate"
+        "get_default_filename"
+    )
     
-    if declare -f generate_concatenated_certificate >/dev/null 2>&1; then
-        assert_success 0 "generate_concatenated_certificate function exists"
-    else
-        assert_failure 0 "generate_concatenated_certificate function should exist"
-    fi
-    
-    if declare -f generate_custom_certificate >/dev/null 2>&1; then
-        assert_success 0 "generate_custom_certificate function exists"
-    else
-        assert_failure 0 "generate_custom_certificate function should exist"
-    fi
+    for func in "${cert_functions[@]}"; do
+        if declare -f "$func" >/dev/null 2>&1; then
+            assert_success 0 "$func function exists"
+        else
+            assert_failure 0 "$func function should exist"
+        fi
+    done
 }
 
 test_custom_certificate_security() {
@@ -405,6 +412,9 @@ HOSTS="test-host1"
 CUSTOM_CERTIFICATES=(
     "pkcs12:password:test.pfx"
     "concatenated::test.pem"
+    "der::test.der"
+    "pkcs7::test.p7b"
+    "crt::test.crt"
 )
 PKCS12_ENABLED=true
 PKCS12_FILENAME="individual.pfx"
@@ -416,11 +426,11 @@ EOF
     if source "$temp_config" 2>/dev/null; then
         assert_success 0 "New certificate configuration can be sourced"
         
-        # Test array parsing
-        if [[ ${#CUSTOM_CERTIFICATES[@]} -eq 2 ]]; then
+        # Test array parsing  
+        if [[ ${#CUSTOM_CERTIFICATES[@]} -eq 5 ]]; then
             assert_success 0 "CUSTOM_CERTIFICATES array parsed correctly"
         else
-            assert_failure 0 "CUSTOM_CERTIFICATES array should have 2 elements, got ${#CUSTOM_CERTIFICATES[@]}"
+            assert_failure 0 "CUSTOM_CERTIFICATES array should have 5 elements, got ${#CUSTOM_CERTIFICATES[@]}"
         fi
         
         # Test individual settings

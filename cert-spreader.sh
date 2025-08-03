@@ -591,12 +591,12 @@ generate_service_certificates() {
 generate_custom_certificate() {
     local cert_config="$1"
     
-    # Parse configuration: "type:password:filename" or "type:dhparam_file:filename"
+    # Parse configuration: "type:param:filename"
     IFS=':' read -r cert_type param filename <<< "$cert_config"
     
     # Set default filename if not provided
     if [[ -z "$filename" ]]; then
-        filename="custom-${cert_type}.pem"
+        filename=$(get_default_filename "$cert_type")
     fi
     
     case "$cert_type" in
@@ -604,12 +604,44 @@ generate_custom_certificate() {
             generate_pkcs12_certificate "$filename" "$param"
             ;;
         concatenated)
-            # For concatenated, param is the dhparam file path
             generate_concatenated_certificate "$filename" "$param"
+            ;;
+        der)
+            generate_der_certificate "$filename"
+            ;;
+        pkcs7|p7b)
+            generate_pkcs7_certificate "$filename"
+            ;;
+        crt)
+            generate_crt_certificate "$filename"
+            ;;
+        pem)
+            generate_pem_certificate "$filename"
+            ;;
+        bundle)
+            generate_bundle_certificate "$filename"
             ;;
         *)
             log "ERROR: Unknown certificate type: $cert_type"
+            log "Supported types: pkcs12, concatenated, der, pkcs7, p7b, crt, pem, bundle"
             ;;
+    esac
+}
+
+# GET DEFAULT FILENAME:
+# Returns appropriate default filename for certificate type
+get_default_filename() {
+    local cert_type="$1"
+    
+    case "$cert_type" in
+        pkcs12)     echo "certificate.pfx" ;;
+        concatenated) echo "combined.pem" ;;
+        der)        echo "certificate.der" ;;
+        pkcs7|p7b)  echo "certificate.p7b" ;;
+        crt)        echo "certificate.crt" ;;
+        pem)        echo "certificate.pem" ;;
+        bundle)     echo "ca-bundle.pem" ;;
+        *)          echo "certificate.$cert_type" ;;
     esac
 }
 
@@ -676,6 +708,130 @@ generate_concatenated_certificate() {
         LOCAL_CERT_CHANGED=true
     else
         log "ERROR: Failed to generate concatenated certificate: $filename"
+    fi
+}
+
+# DER CERTIFICATE GENERATOR:
+# Creates DER format certificates for Java/Android devices
+generate_der_certificate() {
+    local filename="$1"
+    local cert_path="$CERT_DIR/$filename"
+    
+    log "Generating DER certificate: $filename"
+    
+    if [[ "$DRY_RUN" == true ]]; then
+        log "Would generate DER certificate: $cert_path"
+        return 0
+    fi
+    
+    # Convert PEM to DER format
+    if openssl x509 -in "$CERT_DIR/cert.pem" -outform der -out "$cert_path"; then
+        chmod "$FILE_PERMISSIONS" "$cert_path"
+        chown "$FILE_OWNER:$FILE_GROUP" "$cert_path"
+        log "Generated DER certificate: $filename"
+        LOCAL_CERT_CHANGED=true
+    else
+        log "ERROR: Failed to generate DER certificate: $filename"
+    fi
+}
+
+# PKCS#7 CERTIFICATE GENERATOR:
+# Creates PKCS#7 format certificates for Windows/Java trust chains
+generate_pkcs7_certificate() {
+    local filename="$1"
+    local cert_path="$CERT_DIR/$filename"
+    
+    log "Generating PKCS#7 certificate: $filename"
+    
+    if [[ "$DRY_RUN" == true ]]; then
+        log "Would generate PKCS#7 certificate: $cert_path"
+        return 0
+    fi
+    
+    # Create PKCS#7 certificate bundle
+    if openssl crl2pkcs7 -certfile "$CERT_DIR/fullchain.pem" -out "$cert_path" -nocrl; then
+        chmod "$FILE_PERMISSIONS" "$cert_path"
+        chown "$FILE_OWNER:$FILE_GROUP" "$cert_path"
+        log "Generated PKCS#7 certificate: $filename"
+        LOCAL_CERT_CHANGED=true
+    else
+        log "ERROR: Failed to generate PKCS#7 certificate: $filename"
+    fi
+}
+
+# CRT CERTIFICATE GENERATOR:
+# Creates individual CRT certificate file
+generate_crt_certificate() {
+    local filename="$1"
+    local cert_path="$CERT_DIR/$filename"
+    
+    log "Generating CRT certificate: $filename"
+    
+    if [[ "$DRY_RUN" == true ]]; then
+        log "Would generate CRT certificate: $cert_path"
+        return 0
+    fi
+    
+    # Copy cert.pem to .crt file
+    if cp "$CERT_DIR/cert.pem" "$cert_path"; then
+        chmod "$FILE_PERMISSIONS" "$cert_path"
+        chown "$FILE_OWNER:$FILE_GROUP" "$cert_path"
+        log "Generated CRT certificate: $filename"
+        LOCAL_CERT_CHANGED=true
+    else
+        log "ERROR: Failed to generate CRT certificate: $filename"
+    fi
+}
+
+# PEM CERTIFICATE GENERATOR:
+# Creates individual PEM certificate file
+generate_pem_certificate() {
+    local filename="$1"
+    local cert_path="$CERT_DIR/$filename"
+    
+    log "Generating PEM certificate: $filename"
+    
+    if [[ "$DRY_RUN" == true ]]; then
+        log "Would generate PEM certificate: $cert_path"
+        return 0
+    fi
+    
+    # Copy fullchain.pem to custom filename
+    if cp "$CERT_DIR/fullchain.pem" "$cert_path"; then
+        chmod "$FILE_PERMISSIONS" "$cert_path"
+        chown "$FILE_OWNER:$FILE_GROUP" "$cert_path"
+        log "Generated PEM certificate: $filename"
+        LOCAL_CERT_CHANGED=true
+    else
+        log "ERROR: Failed to generate PEM certificate: $filename"
+    fi
+}
+
+# BUNDLE CERTIFICATE GENERATOR:
+# Creates CA bundle certificate file
+generate_bundle_certificate() {
+    local filename="$1"
+    local cert_path="$CERT_DIR/$filename"
+    
+    log "Generating CA bundle certificate: $filename"
+    
+    if [[ "$DRY_RUN" == true ]]; then
+        log "Would generate CA bundle certificate: $cert_path"
+        return 0
+    fi
+    
+    # Copy chain.pem (CA bundle) to custom filename
+    if [[ -f "$CERT_DIR/chain.pem" ]]; then
+        if cp "$CERT_DIR/chain.pem" "$cert_path"; then
+            chmod "$FILE_PERMISSIONS" "$cert_path"
+            chown "$FILE_OWNER:$FILE_GROUP" "$cert_path"
+            log "Generated CA bundle certificate: $filename"
+            LOCAL_CERT_CHANGED=true
+        else
+            log "ERROR: Failed to generate CA bundle certificate: $filename"
+        fi
+    else
+        log "WARNING: chain.pem not found, cannot generate CA bundle: $filename"
     fi
 }
 
