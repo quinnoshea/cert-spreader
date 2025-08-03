@@ -18,11 +18,17 @@ production.yml              # Production config
 local.yml                   # Local config
 
 # === CERTIFICATE FILES ===
-*.pem                       # Certificate files
+*.pem                       # PEM certificate files
 *.pfx                       # PKCS12 files
+*.p12                       # PKCS12 files (alternative extension)
 *.crt                       # Certificate files
+*.der                       # DER certificate files
+*.p7b                       # PKCS#7 certificate files
+*.p7c                       # PKCS#7 certificate files (alternative extension)
 *.key                       # Private key files
 *.csr                       # Certificate signing requests
+*.bundle                    # CA bundle files
+*.ca-bundle                 # CA bundle files (alternative naming)
 
 # === LOG FILES ===
 *.log                       # Log files
