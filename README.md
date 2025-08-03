@@ -4,6 +4,7 @@
 ![Language](https://img.shields.io/badge/Bash%20%26%20Python-3.7+-informational)
 [![Codacy Badge](https://app.codacy.com/project/badge/Grade/2b2bed5783c842dc89ab5c56adcb2896)](https://app.codacy.com?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade)
 ![Status](https://img.shields.io/badge/status-active-success)
+[![CI](https://github.com/yourusername/cert-spreader/actions/workflows/ci-workflow.yml/badge.svg)](https://github.com/yourusername/cert-spreader/actions/workflows/ci-workflow.yml)
 
 > **Deploy and manage Let's Encrypt SSL certificates across multiple hosts and services — safely, automatically, and with full audit logging.**
 >
