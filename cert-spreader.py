@@ -268,6 +268,36 @@ class CertSpreader:
         
         return ssh_cmd
     
+    def _check_command_available(self, command: str) -> bool:
+        """Check if a command is available in system PATH"""
+        try:
+            result = subprocess.run(
+                ['which', command],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            return result.returncode == 0
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            return False
+    
+    def _check_keytool_available(self) -> bool:
+        """Check if Java keytool is available and functional"""
+        if not self._check_command_available('keytool'):
+            return False
+        
+        try:
+            # Test keytool with a simple command to verify it's functional
+            result = subprocess.run(
+                ['keytool', '-help'],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            return result.returncode == 0
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            return False
+    
     def cert_changed(self, host: str, port: int = 22) -> bool:
         """Check if certificate has changed on remote host"""
         # Calculate local hash
@@ -366,7 +396,8 @@ class CertSpreader:
             'p7b': lambda: self._generate_pkcs7_certificate(filename),  # Alias for pkcs7
             'crt': lambda: self._generate_crt_certificate(filename),
             'pem': lambda: self._generate_pem_certificate(filename),
-            'bundle': lambda: self._generate_bundle_certificate(filename)
+            'bundle': lambda: self._generate_bundle_certificate(filename),
+            'jks': lambda: self._generate_jks_certificate(filename, param)
         }
         
         generator = cert_generators.get(cert_type)
@@ -386,7 +417,8 @@ class CertSpreader:
             'p7b': 'certificate.p7b',
             'crt': 'certificate.crt',
             'pem': 'certificate.pem',
-            'bundle': 'ca-bundle.pem'
+            'bundle': 'ca-bundle.pem',
+            'jks': 'certificate.jks'
         }
         return defaults.get(cert_type, f"certificate.{cert_type}")
     
@@ -560,6 +592,105 @@ class CertSpreader:
                 self.log(f"WARNING: chain.pem not found, cannot generate CA bundle: {filename}")
         except IOError as e:
             self.log(f"ERROR: Failed to generate CA bundle certificate {filename}: {e}")
+    
+    def _generate_jks_certificate(self, filename: str, password: str = '') -> None:
+        """Generate JKS (Java KeyStore) certificate via PKCS#12 intermediate"""
+        self.log(f"Generating JKS certificate: {filename}")
+        
+        cert_path = os.path.join(self.config.cert_dir, filename)
+        
+        if self.dry_run:
+            self.log(f"Would generate JKS certificate: {cert_path}")
+            return
+        
+        # Check keytool availability first
+        if not self._check_keytool_available():
+            self.log(f"ERROR: JKS generation requires Java keytool (install Java JDK/JRE)")
+            self.log(f"Alternative: Generate PKCS#12 with 'pkcs12:{password}:{filename.replace('.jks', '.pfx')}' and convert manually")
+            self.log(f"Conversion command: keytool -importkeystore -srckeystore {filename.replace('.jks', '.pfx')} -srcstoretype PKCS12 -destkeystore {filename} -deststoretype JKS")
+            return
+        
+        if not password:
+            self.log(f"ERROR: JKS certificates require a password. Use format: 'jks:password:{filename}'")
+            return
+        
+        # Generate intermediate PKCS#12 file with secure temp name
+        import tempfile
+        import uuid
+        temp_p12_name = f".temp_{uuid.uuid4().hex[:8]}.p12"
+        temp_p12_path = os.path.join(self.config.cert_dir, temp_p12_name)
+        
+        try:
+            # Step 1: Generate PKCS#12 intermediate using existing method
+            self.log(f"Creating intermediate PKCS#12 for JKS conversion")
+            
+            # Build OpenSSL command for PKCS#12 generation
+            openssl_cmd = [
+                'openssl', 'pkcs12', '-export',
+                '-out', temp_p12_path,
+                '-inkey', os.path.join(self.config.cert_dir, 'privkey.pem'),
+                '-in', os.path.join(self.config.cert_dir, 'cert.pem'),
+                '-certfile', os.path.join(self.config.cert_dir, 'fullchain.pem'),
+                '-name', 'certificate',  # Default alias
+                '-passout', f'pass:{password}'
+            ]
+            
+            result = subprocess.run(openssl_cmd, capture_output=True, text=True, timeout=30)
+            
+            if result.returncode != 0:
+                self.log(f"ERROR: Failed to generate intermediate PKCS#12: {result.stderr}")
+                return
+            
+            # Step 2: Convert PKCS#12 to JKS using keytool
+            self.log(f"Converting PKCS#12 to JKS format")
+            
+            keytool_cmd = [
+                'keytool', '-importkeystore',
+                '-srckeystore', temp_p12_path,
+                '-srcstoretype', 'PKCS12',  
+                '-destkeystore', cert_path,
+                '-deststoretype', 'JKS',
+                '-srcalias', 'certificate',
+                '-destalias', 'certificate',
+                '-srcstorepass', password,
+                '-deststorepass', password,
+                '-noprompt'  # Don't prompt for confirmation
+            ]
+            
+            result = subprocess.run(keytool_cmd, capture_output=True, text=True, timeout=30)
+            
+            if result.returncode != 0:
+                self.log(f"ERROR: Failed to convert PKCS#12 to JKS: {result.stderr}")
+                return
+            
+            # Set proper permissions
+            os.chmod(cert_path, int(self.config.file_permissions, 8))
+            
+            # Set ownership if configured and running as root
+            try:
+                uid, gid = self._get_uid_gid()
+                if uid != -1 and gid != -1:
+                    os.chown(cert_path, uid, gid)
+            except (OSError, PermissionError):
+                pass  # Non-root execution, skip chown
+            
+            self.log(f"Generated JKS certificate: {filename}")
+            self.local_cert_changed = True
+            
+        except subprocess.TimeoutExpired:
+            self.log(f"ERROR: JKS generation timed out for {filename}")
+        except subprocess.SubprocessError as e:
+            self.log(f"ERROR: Failed to generate JKS certificate {filename}: {e}")
+        except Exception as e:
+            self.log(f"ERROR: Unexpected error generating JKS certificate {filename}: {e}")
+        finally:
+            # Always cleanup intermediate PKCS#12 file
+            try:
+                if os.path.exists(temp_p12_path):
+                    os.remove(temp_p12_path)
+                    self.log(f"Cleaned up intermediate file: {temp_p12_name}")
+            except OSError as e:
+                self.log(f"WARNING: Failed to cleanup intermediate file {temp_p12_name}: {e}")
     
     def restart_services(self) -> None:
         """Restart services on remote hosts with reload fallback"""

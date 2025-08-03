@@ -59,6 +59,7 @@ CUSTOM_CERTIFICATES=(
     "crt::test-server.crt"
     "pem::test-custom.pem"
     "bundle::test-bundle.pem"
+    "jks:testpass123:test-java-app.jks"
 )
 # Individual settings for testing
 PKCS12_ENABLED=true

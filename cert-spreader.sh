@@ -304,6 +304,31 @@ log() {
     fi
 }
 
+# DEPENDENCY CHECK FUNCTIONS:
+# Check if required external commands are available
+check_command_available() {
+    local command="$1"
+    
+    if command -v "$command" >/dev/null 2>&1; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+check_keytool_available() {
+    if ! check_command_available "keytool"; then
+        return 1
+    fi
+    
+    # Test keytool functionality with a simple command
+    if keytool -help >/dev/null 2>&1; then
+        return 0
+    else
+        return 1
+    fi
+}
+
 # SSH COMMAND CONSTRUCTION FUNCTION:
 # This function builds SSH commands with consistent options and port handling
 # This eliminates duplication and ensures consistent SSH behavior
@@ -621,9 +646,12 @@ generate_custom_certificate() {
         bundle)
             generate_bundle_certificate "$filename"
             ;;
+        jks)
+            generate_jks_certificate "$filename" "$param"
+            ;;
         *)
             log "ERROR: Unknown certificate type: $cert_type"
-            log "Supported types: pkcs12, concatenated, der, pkcs7, p7b, crt, pem, bundle"
+            log "Supported types: pkcs12, concatenated, der, pkcs7, p7b, crt, pem, bundle, jks"
             ;;
     esac
 }
@@ -641,6 +669,7 @@ get_default_filename() {
         crt)        echo "certificate.crt" ;;
         pem)        echo "certificate.pem" ;;
         bundle)     echo "ca-bundle.pem" ;;
+        jks)        echo "certificate.jks" ;;
         *)          echo "certificate.$cert_type" ;;
     esac
 }
@@ -832,6 +861,101 @@ generate_bundle_certificate() {
         fi
     else
         log "WARNING: chain.pem not found, cannot generate CA bundle: $filename"
+    fi
+}
+
+# JKS CERTIFICATE GENERATOR:
+# Creates Java KeyStore (JKS) certificates via PKCS#12 intermediate conversion
+generate_jks_certificate() {
+    local filename="$1"
+    local password="$2"
+    local cert_path="$CERT_DIR/$filename"
+    
+    log "Generating JKS certificate: $filename"
+    
+    if [[ "$DRY_RUN" == true ]]; then
+        log "Would generate JKS certificate: $cert_path"
+        return 0
+    fi
+    
+    # Check keytool availability first
+    if ! check_keytool_available; then
+        log "ERROR: JKS generation requires Java keytool (install Java JDK/JRE)"
+        log "Alternative: Generate PKCS#12 with 'pkcs12:$password:${filename%.jks}.pfx' and convert manually"
+        log "Conversion command: keytool -importkeystore -srckeystore ${filename%.jks}.pfx -srcstoretype PKCS12 -destkeystore $filename -deststoretype JKS"
+        return 1
+    fi
+    
+    # Validate password requirement
+    if [[ -z "$password" ]]; then
+        log "ERROR: JKS certificates require a password. Use format: 'jks:password:$filename'"
+        return 1
+    fi
+    
+    # Generate secure temporary PKCS#12 filename
+    local temp_p12_name=".temp_$(date +%s)_$$.p12"
+    local temp_p12_path="$CERT_DIR/$temp_p12_name"
+    
+    # Cleanup function for error handling
+    cleanup_temp_p12() {
+        if [[ -f "$temp_p12_path" ]]; then
+            rm -f "$temp_p12_path"
+            log "Cleaned up intermediate file: $temp_p12_name"
+        fi
+    }
+    
+    # Set trap for cleanup on exit/error
+    trap cleanup_temp_p12 EXIT
+    
+    # Step 1: Generate intermediate PKCS#12 file
+    log "Creating intermediate PKCS#12 for JKS conversion"
+    
+    if openssl pkcs12 -export \
+        -out "$temp_p12_path" \
+        -inkey "$CERT_DIR/privkey.pem" \
+        -in "$CERT_DIR/cert.pem" \
+        -certfile "$CERT_DIR/fullchain.pem" \
+        -name "certificate" \
+        -passout "pass:$password" 2>/dev/null; then
+        
+        log "Intermediate PKCS#12 created successfully"
+    else
+        log "ERROR: Failed to generate intermediate PKCS#12 for JKS conversion"
+        cleanup_temp_p12
+        trap - EXIT
+        return 1
+    fi
+    
+    # Step 2: Convert PKCS#12 to JKS using keytool
+    log "Converting PKCS#12 to JKS format"
+    
+    if keytool -importkeystore \
+        -srckeystore "$temp_p12_path" \
+        -srcstoretype PKCS12 \
+        -destkeystore "$cert_path" \
+        -deststoretype JKS \
+        -srcalias "certificate" \
+        -destalias "certificate" \
+        -srcstorepass "$password" \
+        -deststorepass "$password" \
+        -noprompt 2>/dev/null; then
+        
+        # Set proper permissions and ownership
+        chmod "$FILE_PERMISSIONS" "$cert_path"
+        chown "$FILE_OWNER:$FILE_GROUP" "$cert_path"
+        
+        log "Generated JKS certificate: $filename"
+        LOCAL_CERT_CHANGED=true
+        
+        # Cleanup and remove trap
+        cleanup_temp_p12
+        trap - EXIT
+        return 0
+    else
+        log "ERROR: Failed to convert PKCS#12 to JKS format"
+        cleanup_temp_p12
+        trap - EXIT
+        return 1
     fi
 }
 

@@ -501,6 +501,7 @@ CUSTOM_CERTIFICATES=(
     "pkcs7::windows-trust.p7b"
     "crt::server.crt"
     "bundle::ca-bundle.pem"
+    "jks:testpass456:java-keystore.jks"
 )
 '''
         with open(self.test_config, 'w') as f:
@@ -518,7 +519,8 @@ CUSTOM_CERTIFICATES=(
             "der::java-app.der",
             "pkcs7::windows-trust.p7b",
             "crt::server.crt",
-            "bundle::ca-bundle.pem"
+            "bundle::ca-bundle.pem",
+            "jks:testpass456:java-keystore.jks"
         ]
         self.assertEqual(spreader.config.custom_certificates, expected_certs)
     
@@ -641,7 +643,8 @@ CONCATENATED_FILENAME="combined.pem"
             "p7b::test.p7b",
             "crt::test.crt",
             "pem::test.pem",
-            "bundle::test.bundle"
+            "bundle::test.bundle",
+            "jks:password:test.jks"
         ]
         
         for config in test_configs:
@@ -660,13 +663,64 @@ CONCATENATED_FILENAME="combined.pem"
             '_generate_pkcs7_certificate', 
             '_generate_crt_certificate',
             '_generate_pem_certificate',
-            '_generate_bundle_certificate'
+            '_generate_bundle_certificate',
+            '_generate_jks_certificate'
         ]
         
         for method_name in new_generators:
             self.assertTrue(hasattr(spreader, method_name))
             method = getattr(spreader, method_name)
             self.assertTrue(callable(method))
+    
+    def test_jks_dependency_checking(self):
+        """Test JKS dependency checking functionality"""
+        spreader = CertSpreader("test.conf")
+        
+        # Test that dependency checking methods exist
+        self.assertTrue(hasattr(spreader, '_check_command_available'))
+        self.assertTrue(hasattr(spreader, '_check_keytool_available'))
+        
+        # Test command availability checking
+        # Test with a command that should exist
+        self.assertTrue(spreader._check_command_available('echo'))
+        
+        # Test with a command that should not exist
+        self.assertFalse(spreader._check_command_available('nonexistent_command_12345'))
+        
+        # Test keytool availability (should be False in test environment)
+        keytool_available = spreader._check_keytool_available()
+        self.assertIsInstance(keytool_available, bool)
+    
+    @patch('subprocess.run')
+    def test_jks_generation_without_keytool(self, mock_subprocess):
+        """Test JKS generation behavior when keytool is not available"""
+        spreader = CertSpreader("test.conf")
+        spreader.config.cert_dir = "/tmp/test"
+        
+        # Mock keytool unavailability
+        with patch.object(spreader, '_check_keytool_available', return_value=False):
+            # Capture log messages
+            with patch.object(spreader, 'log') as mock_log:
+                spreader._generate_jks_certificate("test.jks", "password")
+                
+                # Verify error message was logged
+                mock_log.assert_any_call("ERROR: JKS generation requires Java keytool (install Java JDK/JRE)")
+                mock_log.assert_any_call("Alternative: Generate PKCS#12 with 'pkcs12:password:test.pfx' and convert manually")
+    
+    @patch('subprocess.run')
+    def test_jks_generation_without_password(self, mock_subprocess):
+        """Test JKS generation behavior when password is missing"""
+        spreader = CertSpreader("test.conf")
+        spreader.config.cert_dir = "/tmp/test"
+        
+        # Mock keytool availability
+        with patch.object(spreader, '_check_keytool_available', return_value=True):
+            # Capture log messages
+            with patch.object(spreader, 'log') as mock_log:
+                spreader._generate_jks_certificate("test.jks", "")
+                
+                # Verify error message was logged
+                mock_log.assert_any_call("ERROR: JKS certificates require a password. Use format: 'jks:password:test.jks'")
 
 
 if __name__ == '__main__':

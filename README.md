@@ -239,6 +239,7 @@ The `HOST_SERVICES` array uses the format: `"hostname:port:service1,service2"`
 | **crt** | `.crt` | Individual certificate files, web servers | Cross-platform |
 | **pem** | `.pem` | Custom PEM certificate files | Linux, Unix |
 | **bundle** | `.bundle`, `.pem` | CA certificate bundles, trust stores | Cross-platform |
+| **jks** | `.jks` | Java applications, Tomcat, Spring Boot, Kafka | Java (requires keytool) |
 
 #### Array-Based Configuration (Recommended)
 
@@ -267,20 +268,25 @@ CUSTOM_CERTIFICATES=(
     
     # CA bundle files
     "bundle::ca-certificates.pem"                   # CA bundle
+    
+    # JKS certificates for Java applications (requires Java keytool)
+    "jks:keystorepass:tomcat-server.jks"           # Tomcat web server
+    "jks:springbootpass:app-keystore.jks"          # Spring Boot application
 )
 ```
 
 #### Configuration Format
 
 **Format**: `"type:param:filename"`
-- **type**: Certificate type (pkcs12, concatenated, der, pkcs7, p7b, crt, pem, bundle)
-- **param**: Optional parameter (password for PKCS12, dhparam file for concatenated)
+- **type**: Certificate type (pkcs12, concatenated, der, pkcs7, p7b, crt, pem, bundle, jks)
+- **param**: Optional parameter (password for PKCS12/JKS, dhparam file for concatenated)
 - **filename**: Optional custom filename (defaults to appropriate extension)
 
 **Examples:**
 - `"pkcs12:mypassword:app.pfx"` - PKCS12 with password and custom filename
 - `"der::"` - DER certificate with default filename (certificate.der)
 - `"concatenated:/etc/ssl/dhparam.pem:nginx.pem"` - Concatenated with DH params
+- `"jks:keystorepass:app.jks"` - JKS keystore with password (requires Java keytool)
 
 #### Individual Settings Configuration
 
@@ -519,6 +525,13 @@ fi
    - Use `--permissions-fix` to fix permissions without deployment
    - Check if your permission settings match your security requirements
    - Verify script is running as root for chown operations
+
+6. **JKS certificate generation failures**:
+   - **ERROR: JKS generation requires Java keytool**: Install Java JDK/JRE package
+   - **Ubuntu/Debian**: `sudo apt install openjdk-11-jdk`
+   - **RHEL/CentOS/Fedora**: `sudo dnf install java-11-openjdk-devel`
+   - **Verify installation**: `keytool -help`
+   - **Alternative**: Generate PKCS#12 and convert manually using the provided command
 
 ### Debug Commands
 
