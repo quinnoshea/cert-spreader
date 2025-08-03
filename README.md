@@ -34,7 +34,7 @@ A comprehensive tool for securely deploying Let's Encrypt SSL certificates to mu
 - Standard Unix tools: `rsync`, `ssh`, `openssl`, `curl`, `sha256sum`, `head`, `awk`
 
 ### For Python Version (`cert-spreader.py`)
-- Python 3.7+ with `requests` library (`pip install requests`)
+- Python 3.9+ with `requests` library (`pip install requests`)
 - SSH access to target hosts with key-based authentication
 - Valid SSL certificates (Let's Encrypt recommended)
 - Standard Unix tools: `rsync`, `ssh`, `openssl`
