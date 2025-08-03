@@ -71,6 +71,7 @@ id_*                        # SSH keys
 *.pub                       # SSH public keys (except when explicitly needed)
 known_hosts                 # SSH known hosts
 authorized_keys             # SSH authorized keys
+
 # Force ignore sensitive files
 config.conf
 notes.txt
@@ -78,3 +79,4 @@ secrets.env
 originals/
 python/
 __pycache__
+todo.txt
