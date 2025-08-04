@@ -7,640 +7,539 @@
 ![Status](https://img.shields.io/badge/status-active-success)
 [![CI](https://github.com/quinnoshea/cert-spreader/actions/workflows/ci-workflow.yml/badge.svg)](https://github.com/quinnoshea/cert-spreader/actions/workflows/ci-workflow.yml)
 
-> **Deploy and manage Let's Encrypt SSL certificates across multiple hosts and services — safely, automatically, and with full audit logging.**
->
-> Runs in **both Bash and Python** with identical functionality.
+## Overview
+
+**Enterprise-grade SSL certificate deployment and management platform** for automating the secure distribution of certificates across distributed infrastructure. Supports multiple certificate formats, intelligent service management, and comprehensive audit logging.
+
+### Key Capabilities
+
+- **Multi-platform certificate generation**: PKCS#12, PEM, DER, JKS, and custom formats
+- **Intelligent service management**: Automatic reload/restart with fallback handling  
+- **Enterprise security**: Configurable permissions, SSH key authentication, audit logging
+- **Dual implementation**: Identical functionality in both Bash and Python
+- **Production-ready**: Idempotent operations, comprehensive error handling, dry-run validation
 
 ---
 
-A comprehensive tool for securely deploying Let's Encrypt SSL certificates to multiple hosts and services. Available in both Bash and Python implementations with identical functionality.
+## Table of Contents
 
-## 🔒 Security Features
+- [Quick Start](#quick-start)
+- [Installation](#installation)
+- [Configuration](#configuration)
+- [Usage](#usage)
+- [Security](#security)
+- [Certificate Formats](#certificate-formats)
+- [Monitoring & Troubleshooting](#monitoring--troubleshooting)
+- [Testing](#testing)
+- [Contributing](#contributing)
 
-- **Configuration-based**: Keeps sensitive data separate from code
-- **SSH Key Authentication**: Uses SSH keys for secure, passwordless deployment
-- **Idempotency**: Only deploys when certificates have actually changed
-- **Service Restart Intelligence**: Tries reload first, falls back to restart if needed
-- **Configurable Permissions**: Customizable file and directory permissions
-- **Certificate Change Tracking**: Only restarts services on hosts where certificates changed
-- **Flexible Certificate Generation**: Create PKCS12, concatenated, and custom certificate formats for any application
+---
 
-## 📋 Prerequisites
+## Quick Start
 
-### For Bash Version (`cert-spreader.sh`)
-- Bash 4.0 or higher
-- SSH access to target hosts with key-based authentication
+### Prerequisites
+
+**System Requirements:**
+- Linux/Unix environment with SSH access to target hosts
+- Bash 4.0+ or Python 3.9+
 - Valid SSL certificates (Let's Encrypt recommended)
-- Standard Unix tools: `rsync`, `ssh`, `openssl`, `curl`, `sha256sum`, `head`, `awk`
+- Standard tools: `rsync`, `ssh`, `openssl`
 
-### For Python Version (`cert-spreader.py`)
-- Python 3.9+ with `requests` library (`pip install requests`)
-- SSH access to target hosts with key-based authentication
-- Valid SSL certificates (Let's Encrypt recommended)
-- Standard Unix tools: `rsync`, `ssh`, `openssl`
+**For Python Implementation:**
+```bash
+pip install requests
+```
 
-## 🚀 Quick Setup
-
-### 1. Configure the Application
+### 5-Minute Setup
 
 ```bash
-# Copy the example configuration
+# 1. Clone and configure
+git clone <repository-url>
+cd cert-spreader
 cp config.example.conf config.conf
 
-# Edit config.conf with your actual values
-# WARNING: config.conf is ignored by git - it won't be committed
+# 2. Edit configuration (see Configuration section)
 nano config.conf
+
+# 3. Set up SSH keys
+ssh-keygen -t ed25519 -f ~/.ssh/cert_spreader_key
+ssh-copy-id -i ~/.ssh/cert_spreader_key user@target-host
+
+# 4. Validate configuration
+./cert-spreader.sh --dry-run  # or ./cert-spreader.py --dry-run
+
+# 5. Deploy certificates
+./cert-spreader.sh            # or ./cert-spreader.py
 ```
 
-### 2. Set Up SSH Access
+---
+
+## Installation
+
+### Production Deployment
 
 ```bash
-# Generate SSH key if needed (do this once)
-ssh-keygen -t ed25519 -f /root/.ssh/cert_spreader_key
+# Create dedicated system user (recommended)
+sudo useradd -r -s /bin/bash -d /opt/cert-spreader cert-spreader
 
-# Copy SSH key to each host (replace 'hostname' with actual host)
-ssh-copy-id -i /root/.ssh/cert_spreader_key root@hostname.yourdomain.com
+# Install to system location
+sudo mkdir -p /opt/cert-spreader
+sudo cp cert-spreader.{sh,py} config.example.conf /opt/cert-spreader/
+sudo chown -R cert-spreader:cert-spreader /opt/cert-spreader
+sudo chmod +x /opt/cert-spreader/cert-spreader.{sh,py}
+
+# Configure logging
+sudo mkdir -p /var/log/cert-spreader
+sudo chown cert-spreader:cert-spreader /var/log/cert-spreader
 ```
 
-### 3. Test the Configuration
+### Dependencies
 
+**Bash Version (`cert-spreader.sh`):**
+- No additional dependencies required
+- Uses standard Unix tools: `rsync`, `ssh`, `openssl`, `curl`, `sha256sum`
+
+**Python Version (`cert-spreader.py`):**
 ```bash
-# Make scripts executable
-chmod +x cert-spreader.sh
-chmod +x cert-spreader.py
-
-# ALWAYS test first with dry-run (choose your preferred version)
-./cert-spreader.sh --dry-run
-# OR
-./cert-spreader.py --dry-run
-```
-
-## 🔧 Usage
-
-Both versions support identical command-line interfaces:
-
-### Basic Commands
-
-```bash
-# Normal deployment (deploy certs + restart services + update Proxmox)
-./cert-spreader.sh
-./cert-spreader.py
-
-# Dry run (see what would happen without making changes)  
-./cert-spreader.sh --dry-run
-./cert-spreader.py --dry-run
-
-# Deploy certificates only (skip service restarts)
-./cert-spreader.sh --cert-only
-./cert-spreader.py --cert-only
-
-# Restart services only (skip certificate deployment)
-./cert-spreader.sh --services-only
-./cert-spreader.py --services-only
-
-# Update Proxmox certificates only (skip everything else)
-./cert-spreader.sh --proxmox-only
-./cert-spreader.py --proxmox-only
-
-# Fix certificate file permissions only (skip everything else)
-./cert-spreader.sh --permissions-fix
-./cert-spreader.py --permissions-fix
-
-# Use custom configuration file
-./cert-spreader.sh custom.conf --dry-run
-./cert-spreader.py custom.conf --dry-run
-
-# Get help
-./cert-spreader.sh --help
-./cert-spreader.py --help
-```
-
-### Execution Modes
-
-The scripts support several execution modes for different scenarios:
-
-- **Default mode**: Deploys certificates to hosts, restarts services, and updates Proxmox
-- **`--cert-only`**: Only deploys certificates to hosts, skips service restarts and Proxmox updates
-- **`--services-only`**: Only restarts services on hosts that had certificates deployed, skips certificate deployment and Proxmox updates  
-- **`--proxmox-only`**: Only updates Proxmox certificates, skips everything else
-- **`--permissions-fix`**: Only fixes certificate file permissions, skips everything else
-- **`--dry-run`**: Can be combined with any mode to show what would happen without making changes
-
-**Note**: The selective execution flags (`--cert-only`, `--services-only`, `--proxmox-only`, `--permissions-fix`) are mutually exclusive.
-
-### Intelligence Features
-
-**Service Restart with Fallback**: The scripts now intelligently try `systemctl reload` first, and automatically fall back to `systemctl restart` if reload is not supported by the service.
-
-**Conditional Service Restarts**: Services are only restarted on hosts where certificates were actually deployed, avoiding unnecessary service interruptions.
-
-**Certificate Change Detection**: Uses SHA-256 hash comparison to detect certificate changes and skip deployment when certificates are unchanged.
-
-### Typical Workflow
-
-1. **Test first**: Always run with `--dry-run` to verify configuration
-2. **Deploy certificates**: Run without flags for full deployment  
-3. **Monitor logs**: Check `/var/log/cert-spreader.log` for detailed results
-
-### Let's Encrypt Integration
-
-Add as a post-renewal hook in your certbot configuration:
-
-```bash
-# Add to /etc/letsencrypt/renewal/yourdomain.com.conf
-post_hook = /path/to/cert-spreader.sh
-# OR
-post_hook = /path/to/cert-spreader.py
-
-# Or run manually after renewal
-certbot renew && /path/to/cert-spreader.sh
-```
-
-## 📦 Installation
-
-### Python Version Requirements
-
-For the Python version (`cert-spreader.py`), you need to install the `requests` library:
-
-```bash
-# Install requests library
+# Required Python packages
 pip install requests
 
-# Or using your system package manager
-# Ubuntu/Debian:
-sudo apt install python3-requests
+# System packages (Ubuntu/Debian)
+sudo apt update && sudo apt install python3-requests
 
-# RHEL/CentOS/Fedora:
+# System packages (RHEL/CentOS/Fedora)  
 sudo dnf install python3-requests
 ```
 
-### Bash Version Requirements
+### Integration with Certificate Authorities
 
-The bash version (`cert-spreader.sh`) only requires standard Unix tools (rsync, ssh, openssl, curl).
+**Let's Encrypt Integration:**
+```bash
+# Add post-renewal hook
+# Add to Let's Encrypt renewal configuration if using certbot
+echo 'post_hook = /opt/cert-spreader/cert-spreader.sh' >> /etc/letsencrypt/renewal/yourdomain.com.conf
 
-## ⚙️ Configuration
+# Or run manually after renewal
+certbot renew && /opt/cert-spreader/cert-spreader.sh
+```
 
-### Basic Configuration (config.conf)
+---
+
+## Configuration
+
+### Core Configuration
+
+Edit `config.conf` with your environment details:
 
 ```bash
 # Basic settings
 DOMAIN="yourdomain.com"
-CERT_DIR="/etc/letsencrypt/live/yourdomain.com"
+CERT_DIR="/opt/ssl-certs/yourdomain.com"
+LOG_FILE="/var/log/cert-spreader/cert-spreader.log"
 
-# SSH settings
+# SSH configuration
 SSH_OPTS="-o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new"
 
-# Host list (space-separated)
-HOSTS="web-server mail-server app-server"
+# Target hosts
+HOSTS="web-01 web-02 app-01 db-01"
 
-# Host-specific services
+# Service configuration per host
 HOST_SERVICES=(
-    "web-server:22:nginx,apache2"
-    "mail-server:22:postfix,dovecot"
-    "app-server:2222:myapp"
-)
-
-# Proxmox nodes (optional)
-PROXMOX_USER="user@pve!tokenid"
-PROXMOX_TOKEN="your-api-token"
-PROXMOX_NODES=(
-    "proxmox01"
-    "proxmox02"
-)
-
-# File permissions (NEW: configurable permissions and ownership)
-FILE_PERMISSIONS=644                 # Default permissions for certificate files
-PRIVKEY_PERMISSIONS=600              # More restrictive permissions for private keys
-DIRECTORY_PERMISSIONS=755            # Directory permissions
-FILE_OWNER=root                      # File owner (NEW: configurable owner)
-FILE_GROUP=root                      # File group (NEW: configurable group)
-```
-
-### Host Services Format
-
-The `HOST_SERVICES` array uses the format: `"hostname:port:service1,service2"`
-
-- **hostname**: Must match entries in `HOSTS`
-- **port**: SSH port (22 is default)
-- **services**: Comma-separated list of systemd services to reload/restart
-
-### Comprehensive Custom Certificate Generation
-
-**ENHANCED**: The scripts now support multiple certificate formats for cross-platform compatibility and specialized application requirements.
-
-#### Supported Certificate Types
-
-| Type | Extension | Use Case | Platform Compatibility |
-|------|-----------|----------|----------------------|
-| **pkcs12** | `.pfx`, `.p12` | Windows IIS, Exchange, client certificates | Windows, Cross-platform |
-| **concatenated** | `.pem` | Nginx, Apache, HAProxy, load balancers | Linux, Unix |
-| **der** | `.der`, `.crt` | Java applications, Android, embedded systems | Java, Android, Mobile |
-| **pkcs7** | `.p7b`, `.p7c` | Windows certificate stores, Java trust chains | Windows, Java |
-| **crt** | `.crt` | Individual certificate files, web servers | Cross-platform |
-| **pem** | `.pem` | Custom PEM certificate files | Linux, Unix |
-| **bundle** | `.bundle`, `.pem` | CA certificate bundles, trust stores | Cross-platform |
-| **jks** | `.jks` | Java applications, Tomcat, Spring Boot, Kafka | Java (requires keytool) |
-
-#### Array-Based Configuration (Recommended)
-
-```bash
-# Comprehensive certificate generation using arrays
-CUSTOM_CERTIFICATES=(
-    # PKCS12 certificates for Windows/IIS/Exchange
-    "pkcs12:your-password:application.pfx"          # With password
-    "pkcs12::no-password-cert.pfx"                  # Without password
-    
-    # Concatenated certificates for web servers
-    "concatenated:/etc/ssl/dhparam.pem:nginx.pem"   # With DH parameters
-    "concatenated::simple-combined.pem"             # Simple concatenated
-    
-    # DER certificates for Java/Android
-    "der::java-app.der"                             # Java application
-    "der::android-app.crt"                          # Android application
-    
-    # PKCS#7 certificates for Windows/Java trust chains  
-    "pkcs7::windows-trust.p7b"                      # Windows trust store
-    "p7b::java-trust.p7b"                           # Java trust chain
-    
-    # Individual certificate files
-    "crt::server.crt"                               # Server certificate
-    "pem::custom-cert.pem"                          # Custom PEM certificate
-    
-    # CA bundle files
-    "bundle::ca-certificates.pem"                   # CA bundle
-    
-    # JKS certificates for Java applications (requires Java keytool)
-    "jks:keystorepass:tomcat-server.jks"           # Tomcat web server
-    "jks:springbootpass:app-keystore.jks"          # Spring Boot application
+    "web-01:22:nginx,apache2"
+    "web-02:22:nginx"
+    "app-01:2222:myapp,redis"
+    "db-01:22:mysql"
 )
 ```
 
-#### Configuration Format
+### Advanced Configuration
 
-**Format**: `"type:param:filename"`
-- **type**: Certificate type (pkcs12, concatenated, der, pkcs7, p7b, crt, pem, bundle, jks)
-- **param**: Optional parameter (password for PKCS12/JKS, dhparam file for concatenated)
-- **filename**: Optional custom filename (defaults to appropriate extension)
-
-**Examples:**
-- `"pkcs12:mypassword:app.pfx"` - PKCS12 with password and custom filename
-- `"der::"` - DER certificate with default filename (certificate.der)
-- `"concatenated:/etc/ssl/dhparam.pem:nginx.pem"` - Concatenated with DH params
-- `"jks:keystorepass:app.jks"` - JKS keystore with password (requires Java keytool)
-
-#### Individual Settings Configuration
-
-```bash
-# PKCS12/PFX certificate generation
-PKCS12_ENABLED=true
-PKCS12_PASSWORD="your-password"      # Optional - leave empty for no password
-PKCS12_FILENAME="certificate.pfx"    # Custom filename
-
-# Concatenated certificate generation  
-CONCATENATED_ENABLED=true
-CONCATENATED_DHPARAM_FILE="/etc/nginx/ssl/dhparam.pem"  # Optional DH parameters
-CONCATENATED_FILENAME="combined.pem"                    # Custom filename
-```
-
-
-#### Certificate Types Supported
-
-- **PKCS12/PFX**: Perfect for applications like Plex, Windows services, or any application requiring PKCS12 format
-  - Configurable password (optional)
-  - Custom filenames
-  - Multiple certificates supported
-  
-- **Concatenated**: Ideal for applications like ZNC, nginx, or services needing combined certificates
-  - Private key + certificate + chain in one file
-  - Optional DH parameters inclusion
-  - Custom filenames
-  - Multiple certificates supported
-
-#### Practical Examples
-
-**For Plex Media Server:**
+**Multi-Format Certificate Generation:**
 ```bash
 CUSTOM_CERTIFICATES=(
-    "pkcs12:MyPlexPassword:plex-server.pfx"
+    # Windows/IIS certificates
+    "pkcs12:SecurePassword123:windows-iis.pfx"
+    
+    # Web server certificates with DH parameters
+    "concatenated:/etc/ssl/dhparam.pem:nginx-combined.pem"
+    
+    # Java application certificates
+    "jks:KeystorePassword:tomcat-app.jks"
+    
+    # Mobile/embedded certificates
+    "der::mobile-app.der"
 )
 ```
 
-**For ZNC IRC Bouncer:**
+**Security Configuration:**
 ```bash
-CUSTOM_CERTIFICATES=(
-    "concatenated:/etc/ssl/dhparam.pem:znc.pem"
-)
+# File permissions and ownership
+FILE_PERMISSIONS=644              # Certificate files
+PRIVKEY_PERMISSIONS=600           # Private keys (more restrictive)
+DIRECTORY_PERMISSIONS=755         # Directories
+FILE_OWNER=root                   # File owner
+FILE_GROUP=ssl-cert              # File group
 ```
 
-**For Multiple Applications:**
+**Proxmox Integration:**
 ```bash
-CUSTOM_CERTIFICATES=(
-    "pkcs12:PlexPass123:plex.pfx"                    # Plex Media Server
-    "concatenated:/etc/ssl/dhparam.pem:nginx.pem"     # Nginx with DH params
-    "concatenated::znc.pem"                          # ZNC without DH params
-    "pkcs12::windows-service.pfx"                    # Windows service (no password)
-)
+PROXMOX_USER="automation@pve!cert-deployer"
+PROXMOX_TOKEN="your-api-token-here"
+PROXMOX_NODES=("proxmox-01" "proxmox-02")
 ```
 
-**Mixed Configuration (using both formats):**
-```bash
-# Array for multiple certificates
-CUSTOM_CERTIFICATES=(
-    "pkcs12:secret:app1.pfx"
-    "concatenated::app2.pem"
-)
+### Configuration Validation
 
-# Individual settings for additional certificates
-PKCS12_ENABLED=true
-PKCS12_FILENAME="additional-app.pfx"  
-PKCS12_PASSWORD="another-password"
+```bash
+# Validate configuration before deployment
+./cert-spreader.sh --dry-run
+./cert-spreader.py --dry-run
+
+# Test SSH connectivity
+ssh -i ~/.ssh/cert_spreader_key user@target-host 'echo "Connection OK"'
 ```
 
-### Configurable Certificate Permissions and Ownership
+---
 
-**NEW FEATURE**: File permissions and ownership are now configurable through the configuration file:
+## Usage
+
+### Command-Line Interface
+
+Both implementations provide identical command-line interfaces:
 
 ```bash
-# File permissions and ownership configuration
-FILE_PERMISSIONS=644                 # Default permissions for certificate files (owner: read/write, group/others: read)
-PRIVKEY_PERMISSIONS=600              # More restrictive permissions for private keys (owner: read/write only)
-DIRECTORY_PERMISSIONS=755            # Directory permissions (owner: read/write/execute, group/others: read/execute)
-FILE_OWNER=root                      # File owner (NEW: configurable owner)
-FILE_GROUP=root                      # File group (NEW: configurable group)
+# Full deployment (certificates + services + Proxmox)
+./cert-spreader.sh
+./cert-spreader.py
+
+# Deployment modes
+./cert-spreader.sh --cert-only        # Deploy certificates only
+./cert-spreader.sh --services-only    # Restart services only  
+./cert-spreader.sh --proxmox-only     # Update Proxmox only
+./cert-spreader.sh --permissions-fix  # Fix permissions only
+
+# Validation and debugging
+./cert-spreader.sh --dry-run          # Preview actions without changes
+./cert-spreader.sh --help             # Display usage information
+
+# Custom configuration
+./cert-spreader.sh /path/to/custom.conf --dry-run
 ```
 
-**Default Security Model:**
-- Certificate directory: `755` (drwxr-xr-x, root:root)
-- Private keys (`privkey.pem`): `600` (-rw-------, root:root) 
-- Other certificates (`cert.pem`, `fullchain.pem`, etc.): `644` (-rw-r--r--, root:root)
-- Service certificates (Plex, ZNC): Use `FILE_PERMISSIONS` setting
-- **All files and directories**: Default to `root:root` ownership (configurable)
+### Operational Workflows
 
-**Customization Examples:**
+**Standard Deployment Workflow:**
+1. **Validate**: `./cert-spreader.sh --dry-run`
+2. **Deploy**: `./cert-spreader.sh`
+3. **Monitor**: Check logs at `/var/log/cert-spreader/cert-spreader.log`
+4. **Verify**: Test services and certificate validity
+
+**Maintenance Workflows:**
 ```bash
-# More restrictive setup (all files private)
-FILE_PERMISSIONS=600
-PRIVKEY_PERMISSIONS=600
-DIRECTORY_PERMISSIONS=700
-FILE_OWNER=root
-FILE_GROUP=root
+# Fix certificate permissions across all hosts
+./cert-spreader.sh --permissions-fix
 
-# Different group for certificate access
-FILE_PERMISSIONS=644
-PRIVKEY_PERMISSIONS=640
-DIRECTORY_PERMISSIONS=755
-FILE_OWNER=root
-FILE_GROUP=ssl-cert
+# Restart services after manual certificate updates
+./cert-spreader.sh --services-only
 
-# Application-specific ownership
-FILE_PERMISSIONS=644
-PRIVKEY_PERMISSIONS=600
-DIRECTORY_PERMISSIONS=755
-FILE_OWNER=nginx
-FILE_GROUP=nginx
+# Update only Proxmox certificates
+./cert-spreader.sh --proxmox-only
 ```
 
-**Manual Permission Fix:** Use `--permissions-fix` to fix permissions without doing anything else.
+### Automation & Scheduling
 
-### Alternative: Environment Variables
-
-While the scripts currently use `config.conf`, you can use environment variables as an alternative or supplement for sensitive values:
-
-**Option 1: Hybrid Approach (Recommended)**
-Keep `config.conf` for host lists and complex settings, but override sensitive values:
-
+**Cron Integration:**
 ```bash
-# Set sensitive values via environment
-export PROXMOX_TOKEN="your-real-token"
-export FILE_PERMISSIONS="600"  # Override default permissions
-export FILE_OWNER="nginx"      # Override default owner
-export FILE_GROUP="ssl-cert"   # Override default group
+# Add to crontab for automated renewals
+0 3 * * 1 /opt/cert-spreader/cert-spreader.sh >> /var/log/cert-spreader/cron.log 2>&1
+```
 
-# Run script normally
+**Systemd Timer (Recommended):**
+```bash
+# Create systemd service and timer files
+sudo systemctl enable cert-spreader.timer
+sudo systemctl start cert-spreader.timer
+```
+
+---
+
+## Security
+
+### Authentication & Authorization
+
+**SSH Key Management:**
+```bash
+# Generate dedicated SSH keys
+ssh-keygen -t ed25519 -f ~/.ssh/cert_spreader_key
+
+# Secure key permissions
+chmod 600 ~/.ssh/cert_spreader_key
+chown root:root ~/.ssh/cert_spreader_key
+
+# Deploy keys to target hosts
+for host in web-01 web-02 app-01; do
+    ssh-copy-id -i ~/.ssh/cert_spreader_key user@${host}.yourdomain.com
+done
+```
+
+**Configuration Security:**
+```bash
+# Secure configuration files
+chmod 600 config.conf
+chown root:root config.conf
+
+# Use environment variables for sensitive data
+export PROXMOX_TOKEN="your-token-here"
 ./cert-spreader.sh
 ```
 
-**Option 2: Full Environment Variables**
-Copy and customize the example file:
+### Certificate Security
 
+**Default Security Model:**
+- Certificate directories: `755` (drwxr-xr-x)
+- Private keys: `600` (-rw-------)
+- Certificate files: `644` (-rw-r--r--)
+- Custom ownership and group assignment supported
+
+**Security Best Practices:**
+- Never commit `config.conf` to version control
+- Use dedicated service accounts for deployment
+- Implement proper SSH key rotation
+- Monitor certificate deployment logs
+- Validate certificate chains and expiration dates
+
+---
+
+## Certificate Formats
+
+### Supported Formats & Use Cases
+
+| Format | Extension | Primary Use Cases | Platform Support |
+|--------|-----------|------------------|-------------------|
+| **PKCS#12** | `.pfx`, `.p12` | Windows IIS, Exchange, client certs | Windows, Cross-platform |
+| **Concatenated** | `.pem` | Nginx, Apache, HAProxy, ZNC | Linux, Unix |
+| **DER** | `.der`, `.crt` | Java applications, Android, embedded | Java, Mobile, IoT |
+| **PKCS#7** | `.p7b`, `.p7c` | Windows cert stores, Java trust chains | Windows, Java |
+| **JKS** | `.jks` | Java applications, Tomcat, Kafka | Java ecosystem |
+| **PEM** | `.pem` | Custom applications, OpenSSL | Linux, Unix |
+| **CRT** | `.crt` | Individual certificates, web servers | Cross-platform |
+
+### Configuration Examples
+
+**Enterprise Web Infrastructure:**
 ```bash
-# Create your environment file
-cp secrets.env.example secrets.env
-nano secrets.env
-
-# Example secrets.env content:
-export DOMAIN="yourdomain.com"
-export PROXMOX_TOKEN="your-real-token"
-export CUSTOM_CERTIFICATES=(
-    "pkcs12:YourSecretPassword:plex.pfx"
-    "concatenated:/etc/ssl/dhparam.pem:nginx.pem"
+CUSTOM_CERTIFICATES=(
+    # Load balancer with DH parameters
+    "concatenated:/etc/ssl/dhparam.pem:haproxy-frontend.pem"
+    
+    # Application servers
+    "pkcs12:AppServerPassword:app-server.pfx"
+    
+    # Java middleware
+    "jks:MiddlewareKeystore:tomcat-cluster.jks"
 )
-export FILE_PERMISSIONS="644"
-export PRIVKEY_PERMISSIONS="600"
-export FILE_OWNER="root"
-export FILE_GROUP="ssl-cert"
-
-# Modify script to source it (add to beginning of cert-spreader.sh):
-if [[ -f "secrets.env" ]]; then
-    source secrets.env
-fi
 ```
 
-## 🔄 Bash vs Python Versions
+**Multi-Platform Environment:**
+```bash
+CUSTOM_CERTIFICATES=(
+    # Windows infrastructure
+    "pkcs12:WindowsPassword:exchange-server.pfx"
+    "pkcs12:IISPassword:web-server.pfx"
+    
+    # Linux web services
+    "concatenated:/etc/nginx/ssl/dhparam.pem:nginx-production.pem"
+    "concatenated::apache-staging.pem"
+    
+    # Mobile applications
+    "der::android-app.der"
+    "der::ios-app.crt"
+    
+    # Java applications
+    "jks:ProductionKeystore:spring-boot-app.jks"
+)
+```
 
-| Feature | Bash Version | Python Version |
-|---------|-------------|----------------|
-| **Dependencies** | Standard Unix tools | Python 3.7+ + requests |
-| **Performance** | Very fast | Fast |
-| **Error Handling** | Good | Excellent |
-| **Debugging** | Standard bash debugging | Rich exception info |
-| **Configuration** | Bash source files | Bash source files (same format) |
-| **Portability** | Unix/Linux only | Cross-platform |
-| **Type Safety** | No | Yes (with type hints) |
-| **Maintainability** | Good | Excellent |
+---
 
-**Choose Bash if:**
-- You prefer shell scripting
-- Minimal dependencies are critical
-- You need maximum performance
-- Your environment is Unix/Linux only
+## Monitoring & Troubleshooting
 
-**Choose Python if:**
-- You prefer structured programming
-- You want better error messages
-- You need cross-platform compatibility
-- You plan to extend functionality
+### Logging & Monitoring
 
-## 🔒 Security Best Practices
+**Log Locations:**
+- Main log: `/var/log/cert-spreader/cert-spreader.log`
+- Cron log: `/var/log/cert-spreader/cron.log`
+- System log: `journalctl -u cert-spreader`
 
-### SSH Key Management
+**Log Analysis:**
+```bash
+# Monitor real-time deployment
+tail -f /var/log/cert-spreader/cert-spreader.log
 
-1. **Use dedicated keys**: Create separate SSH keys for certificate deployment
-2. **Restrict key access**: 
-   ```bash
-   chmod 600 /root/.ssh/cert_spreader_key
-   chown root:root /root/.ssh/cert_spreader_key
-   ```
-3. **Limit key usage**: Consider using SSH key restrictions where possible
+# Check recent deployments
+grep "Certificate deployment" /var/log/cert-spreader/cert-spreader.log | tail -10
 
-### Configuration Security
+# Analyze errors
+grep -i error /var/log/cert-spreader/cert-spreader.log
+```
 
-1. **Protect config file**:
-   ```bash
-   chmod 600 config.conf
-   chown root:root config.conf
-   ```
+### Common Issues & Solutions
 
-2. **Review before commits**: Always check `git status` before pushing
-
-3. **Use the example file**: Share `config.example.conf`, never `config.conf`
-
-4. **Configure permissions appropriately**: Use the permission settings to match your security requirements
-
-## 🔧 Troubleshooting
-
-### Common Issues
-
-1. **Permission Denied**: 
-   - Check SSH key permissions and SSH agent
-   - Verify SSH key is copied to target hosts
-   - Test manual SSH connection: `ssh -i /root/.ssh/cert_spreader_key root@host.domain.com`
-
-2. **Certificate unchanged, skipping**: 
-   - This is normal behavior (idempotency)
-   - Use `--dry-run` to see what would happen
-   - Check certificate hashes match between local and remote
-
-3. **Service restart failures**:
-   - **NEW**: Scripts now automatically try reload first, then restart
-   - Verify service names in configuration
-   - Test manually: `ssh host 'systemctl reload nginx || systemctl restart nginx'`
-
-4. **Proxmox API errors**:
-   - Verify API token permissions in Proxmox
-   - Check token format: `user@realm!tokenname`
-   - Test connectivity: `curl -k https://proxmox.domain.com:8006`
-
-5. **Permission issues**:
-   - Use `--permissions-fix` to fix permissions without deployment
-   - Check if your permission settings match your security requirements
-   - Verify script is running as root for chown operations
-
-6. **JKS certificate generation failures**:
-   - **ERROR: JKS generation requires Java keytool**: Install Java JDK/JRE package
-   - **Ubuntu/Debian**: `sudo apt install openjdk-11-jdk`
-   - **RHEL/CentOS/Fedora**: `sudo dnf install java-11-openjdk-devel`
-   - **Verify installation**: `keytool -help`
-   - **Alternative**: Generate PKCS#12 and convert manually using the provided command
-
-### Debug Commands
-
+**Connection Issues:**
 ```bash
 # Test SSH connectivity
-ssh -i /root/.ssh/cert_spreader_key root@hostname.domain.com 'echo "Connection OK"'
+ssh -i ~/.ssh/cert_spreader_key user@target-host 'echo "Connection test"'
 
-# Check certificate validity
-openssl x509 -in /etc/letsencrypt/live/domain/cert.pem -text -noout | grep -A2 Validity
+# Verify SSH agent
+ssh-add -l
 
-# Verify certificate hash (new method)
-sha256sum /etc/letsencrypt/live/domain/fullchain.pem | head -c 64
-
-# Test service reload with fallback
-ssh hostname.domain.com 'systemctl reload nginx || systemctl restart nginx'
-
-# Check current permissions
-ls -la /etc/letsencrypt/live/domain/
+# Check DNS resolution
+nslookup target-host.yourdomain.com
 ```
 
-### Testing
-
-Both implementations include comprehensive test suites:
-
-**Bash Testing Framework:**
+**Certificate Issues:**
 ```bash
-# Run all Bash tests
+# Verify certificate validity and chain
+openssl x509 -in /opt/ssl-certs/domain/cert.pem -text -noout | grep -A2 Validity
+openssl verify -CApath /etc/ssl/certs /opt/ssl-certs/domain/fullchain.pem
+
+# Check certificate hash for change detection
+sha256sum /opt/ssl-certs/domain/fullchain.pem | head -c 64
+```
+
+**Service Issues:**
+```bash
+# Test service reload manually
+ssh target-host 'systemctl reload nginx || systemctl restart nginx'
+
+# Check service status
+ssh target-host 'systemctl status nginx'
+
+# Verify certificate loading
+ssh target-host 'openssl s_client -connect localhost:443 -servername yourdomain.com'
+```
+
+**Permission Issues:**
+```bash
+# Fix permissions manually
+./cert-spreader.sh --permissions-fix --dry-run
+./cert-spreader.sh --permissions-fix
+
+# Verify ownership and permissions
+ls -la /opt/ssl-certs/domain/
+```
+
+### Health Checks
+
+**Pre-deployment Validation:**
+```bash
+# Comprehensive pre-flight check
+./cert-spreader.sh --dry-run 2>&1 | tee pre-deployment-check.log
+
+# Validate configuration syntax
+bash -n cert-spreader.sh
+python3 -m py_compile cert-spreader.py
+```
+
+**Post-deployment Verification:**
+```bash
+# Verify certificate deployment
+for host in $(echo $HOSTS); do
+    ssh ${host}.${DOMAIN} "ls -la /opt/ssl-certs/${DOMAIN}/"
+done
+
+# Test HTTPS connectivity
+for host in $(echo $HOSTS); do
+    curl -I https://${host}.${DOMAIN}
+done
+```
+
+---
+
+## Testing
+
+Comprehensive test suites are provided for both implementations. See [TESTING.md](TESTING.md) for detailed information.
+
+**Quick Test Commands:**
+```bash
+# Run all tests
 ./test-cert-spreader.sh
-
-# Setup test environment for manual testing
-./test-cert-spreader.sh --setup
-
-# Clean up test environment
-./test-cert-spreader.sh --cleanup
-```
-
-**Python Testing Framework:**
-```bash
-# Run all Python tests
 ./test-cert-spreader.py
 
 # Run with verbose output
 ./test-cert-spreader.py -v
 
-# Run specific test class
-python3 -m unittest test-cert-spreader.TestOwnerGroupFunctionality -v
+# Test specific functionality
+python3 -m unittest test-cert-spreader.TestCustomCertificates -v
 ```
-
-**Run Both Test Suites:**
-```bash
-# Run both test frameworks
-./test-cert-spreader.sh && ./test-cert-spreader.py
-```
-
-See `TESTING.md` for detailed testing documentation and test coverage information.
-
-## 🎯 Design Philosophy
-
-This tool follows the principle of **simplicity with intelligence**:
-
-- **Linear execution**: Easy to understand and debug
-- **Minimal dependencies**: Uses standard Unix tools and Python with requests library
-- **Clear logging**: Simple, readable log messages with dry-run support
-- **Fail-fast**: Stops on errors rather than continuing with undefined state
-- **Idempotent**: Safe to run multiple times, only changes what's needed
-- **Intelligent**: Tries reload before restart, only acts on changed certificates
-- **Configurable**: Flexible permissions and behavior without complexity
-
-## 🔄 Recent Improvements
-
-### Version 2.0 Features
-
-- **Service Restart Intelligence**: Automatically tries reload first, falls back to restart
-- **Conditional Restarts**: Only restarts services on hosts where certificates changed
-- **Configurable Permissions**: File and directory permissions are now configurable
-- **Configurable Ownership**: File owner and group are now configurable (NEW)
-- **Python Implementation**: Complete Python version with identical functionality
-- **Better Hash Handling**: Improved certificate change detection (fixed quote escaping issues)
-- **Enhanced Testing**: Comprehensive test suite for validation
-
-## 🤝 Contributing
-
-1. **Report issues**: Document any problems you encounter
-2. **Suggest improvements**: Ideas for better security or functionality  
-3. **Test thoroughly**: Always use `--dry-run` when testing changes
-4. **Keep it simple**: Resist the urge to add complexity
-5. **Update tests**: Ensure test suite covers new functionality
-
-## 📄 License
-
-Licensed under the **Apache License, Version 2.0** (the "License");  
-you may not use this file except in compliance with the License.  
-You may obtain a copy at:
-
-> http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by law or agreed to in writing, software  
-distributed under the License is distributed on an **"AS IS" BASIS**,  
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND.  
-See the License for the specific language governing permissions and  
-limitations under the License.
-
-**Attribution Requirement:**  
-If you publicly use or modify this project, you must credit the original author in your documentation or README.
 
 ---
 
-**⚠️ Security Reminder**: Never commit real hostnames, tokens, or private keys to any repository, even private ones!
+## Implementation Comparison
 
-**💡 Pro Tip**: Always run with `--dry-run` first to see what the script will do before making actual changes.
+### Choosing Between Bash and Python
 
-**🔧 New Feature**: Configure file permissions and ownership to match your security requirements using the new permission and ownership settings!
+| Criteria | Bash Implementation | Python Implementation |
+|----------|-------------------|----------------------|
+| **Dependencies** | Standard Unix tools only | Python 3.9+ + requests |
+| **Performance** | Excellent (native shell) | Very good |
+| **Error Handling** | Good with proper exit codes | Excellent with exceptions |
+| **Maintainability** | Good for shell expertise | Excellent for development teams |
+| **Debugging** | Shell debugging tools | Rich debugging and logging |
+| **Portability** | Unix/Linux only | Cross-platform |
+| **Extensibility** | Moderate | High |
+
+**Recommendation:**
+- **Bash**: Choose for minimal dependencies, maximum performance, pure Unix environments
+- **Python**: Choose for better error handling, easier maintenance, team development
+
+---
+
+## Contributing
+
+### Development Guidelines
+
+1. **Maintain dual compatibility**: Changes must work in both Bash and Python implementations
+2. **Security first**: Follow security best practices, never expose secrets
+3. **Test thoroughly**: All changes must include tests and pass existing test suites
+4. **Document changes**: Update README.md, TESTING.md, and inline documentation
+
+### Testing Requirements
+
+```bash
+# Before submitting changes
+./test-cert-spreader.sh
+./test-cert-spreader.py
+
+# Validate with real configuration
+./cert-spreader.sh --dry-run
+./cert-spreader.py --dry-run
+```
+
+### Code Standards
+
+- **Bash**: Follow shell scripting best practices, use `set -euo pipefail`
+- **Python**: Follow PEP 8, use type hints, maintain Python 3.9+ compatibility
+- **Documentation**: Clear comments, comprehensive docstrings, updated examples
+
+---
+
+## License & Attribution
+
+Licensed under the **Apache License, Version 2.0**.  
+See [LICENSE](LICENSE) for full terms.
+
+**Attribution Requirement:** If you publicly use or modify this project, credit the original author in your documentation.
+
+---
+
+## Support & Resources
+
+- **Issues**: Report bugs and feature requests via GitHub Issues
+- **Documentation**: See [TESTING.md](TESTING.md) for testing details
+- **Security**: Never commit real credentials; use `.gitignore` and example files
+- **Best Practices**: Always run `--dry-run` before production deployments
+
+---
+
+*Enterprise-grade SSL certificate management for modern infrastructure.*

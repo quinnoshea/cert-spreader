@@ -143,7 +143,7 @@ class TestConfigurationLoading(unittest.TestCase):
         """Test loading a basic configuration"""
         config_content = '''
 DOMAIN="test.example.com"
-CERT_DIR="/etc/letsencrypt/live/test.example.com"
+CERT_DIR="/opt/ssl-certs/test.example.com"
 HOSTS="host1 host2 host3"
 HOST_SERVICES=(
     "host1:22:nginx"
@@ -182,7 +182,7 @@ FILE_GROUP=ssl-cert
         
         # Test basic configuration
         self.assertEqual(spreader.config.domain, "test.example.com")
-        self.assertEqual(spreader.config.cert_dir, "/etc/letsencrypt/live/test.example.com")
+        self.assertEqual(spreader.config.cert_dir, "/opt/ssl-certs/test.example.com")
         self.assertEqual(spreader.config.hosts, ["host1", "host2", "host3"])
         
         # Test arrays
