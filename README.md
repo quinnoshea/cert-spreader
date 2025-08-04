@@ -40,13 +40,13 @@
 
 ### Prerequisites
 
-**System Requirements:**
+### System Requirements
 - Linux/Unix environment with SSH access to target hosts
 - Bash 4.0+ or Python 3.9+
 - Valid SSL certificates (Let's Encrypt recommended)
 - Standard tools: `rsync`, `ssh`, `openssl`
 
-**For Python Implementation:**
+### For Python Implementation
 ```bash
 pip install requests
 ```
@@ -96,11 +96,11 @@ sudo chown cert-spreader:cert-spreader /var/log/cert-spreader
 
 ### Dependencies
 
-**Bash Version (`cert-spreader.sh`):**
+#### Bash Version (`cert-spreader.sh`)
 - No additional dependencies required
 - Uses standard Unix tools: `rsync`, `ssh`, `openssl`, `curl`, `sha256sum`
 
-**Python Version (`cert-spreader.py`):**
+#### Python Version (`cert-spreader.py`)
 ```bash
 # Required Python packages
 pip install requests
@@ -114,7 +114,7 @@ sudo dnf install python3-requests
 
 ### Integration with Certificate Authorities
 
-**Let's Encrypt Integration:**
+### Let's Encrypt Integration
 ```bash
 # Add post-renewal hook
 # Add to Let's Encrypt renewal configuration if using certbot
@@ -155,7 +155,7 @@ HOST_SERVICES=(
 
 ### Advanced Configuration
 
-**Multi-Format Certificate Generation:**
+### Multi-Format Certificate Generation
 ```bash
 CUSTOM_CERTIFICATES=(
     # Windows/IIS certificates
@@ -172,7 +172,7 @@ CUSTOM_CERTIFICATES=(
 )
 ```
 
-**Security Configuration:**
+### Security Configuration
 ```bash
 # File permissions and ownership
 FILE_PERMISSIONS=644              # Certificate files
@@ -182,7 +182,7 @@ FILE_OWNER=root                   # File owner
 FILE_GROUP=ssl-cert              # File group
 ```
 
-**Proxmox Integration:**
+### Proxmox Integration
 ```bash
 PROXMOX_USER="automation@pve!cert-deployer"
 PROXMOX_TOKEN="your-api-token-here"
@@ -229,13 +229,13 @@ Both implementations provide identical command-line interfaces:
 
 ### Operational Workflows
 
-**Standard Deployment Workflow:**
+### Standard Deployment Workflow
 1. **Validate**: `./cert-spreader.sh --dry-run`
 2. **Deploy**: `./cert-spreader.sh`
 3. **Monitor**: Check logs at `/var/log/cert-spreader/cert-spreader.log`
 4. **Verify**: Test services and certificate validity
 
-**Maintenance Workflows:**
+### Maintenance Workflows
 ```bash
 # Fix certificate permissions across all hosts
 ./cert-spreader.sh --permissions-fix
@@ -249,13 +249,13 @@ Both implementations provide identical command-line interfaces:
 
 ### Automation & Scheduling
 
-**Cron Integration:**
+#### Cron Integration
 ```bash
 # Add to crontab for automated renewals
 0 3 * * 1 /opt/cert-spreader/cert-spreader.sh >> /var/log/cert-spreader/cron.log 2>&1
 ```
 
-**Systemd Timer (Recommended):**
+#### Systemd Timer (Recommended)
 ```bash
 # Create systemd service and timer files
 sudo systemctl enable cert-spreader.timer
@@ -268,7 +268,7 @@ sudo systemctl start cert-spreader.timer
 
 ### Authentication & Authorization
 
-**SSH Key Management:**
+### SSH Key Management
 ```bash
 # Generate dedicated SSH keys
 ssh-keygen -t ed25519 -f ~/.ssh/cert_spreader_key
@@ -283,7 +283,7 @@ for host in web-01 web-02 app-01; do
 done
 ```
 
-**Configuration Security:**
+### Configuration Security
 ```bash
 # Secure configuration files
 chmod 600 config.conf
@@ -296,13 +296,13 @@ export PROXMOX_TOKEN="your-token-here"
 
 ### Certificate Security
 
-**Default Security Model:**
+#### Default Security Model
 - Certificate directories: `755` (drwxr-xr-x)
 - Private keys: `600` (-rw-------)
 - Certificate files: `644` (-rw-r--r--)
 - Custom ownership and group assignment supported
 
-**Security Best Practices:**
+#### Security Best Practices
 - Never commit `config.conf` to version control
 - Use dedicated service accounts for deployment
 - Implement proper SSH key rotation
@@ -327,7 +327,7 @@ export PROXMOX_TOKEN="your-token-here"
 
 ### Configuration Examples
 
-**Enterprise Web Infrastructure:**
+### Enterprise Web Infrastructure
 ```bash
 CUSTOM_CERTIFICATES=(
     # Load balancer with DH parameters
@@ -341,7 +341,7 @@ CUSTOM_CERTIFICATES=(
 )
 ```
 
-**Multi-Platform Environment:**
+### Multi-Platform Environment
 ```bash
 CUSTOM_CERTIFICATES=(
     # Windows infrastructure
@@ -367,12 +367,12 @@ CUSTOM_CERTIFICATES=(
 
 ### Logging & Monitoring
 
-**Log Locations:**
+### Log Locations
 - Main log: `/var/log/cert-spreader/cert-spreader.log`
 - Cron log: `/var/log/cert-spreader/cron.log`
 - System log: `journalctl -u cert-spreader`
 
-**Log Analysis:**
+### Log Analysis
 ```bash
 # Monitor real-time deployment
 tail -f /var/log/cert-spreader/cert-spreader.log
@@ -386,7 +386,7 @@ grep -i error /var/log/cert-spreader/cert-spreader.log
 
 ### Common Issues & Solutions
 
-**Connection Issues:**
+### Connection Issues
 ```bash
 # Test SSH connectivity
 ssh -i ~/.ssh/cert_spreader_key user@target-host 'echo "Connection test"'
@@ -398,7 +398,7 @@ ssh-add -l
 nslookup target-host.yourdomain.com
 ```
 
-**Certificate Issues:**
+### Certificate Issues
 ```bash
 # Verify certificate validity and chain
 openssl x509 -in /opt/ssl-certs/domain/cert.pem -text -noout | grep -A2 Validity
@@ -408,7 +408,7 @@ openssl verify -CApath /etc/ssl/certs /opt/ssl-certs/domain/fullchain.pem
 sha256sum /opt/ssl-certs/domain/fullchain.pem | head -c 64
 ```
 
-**Service Issues:**
+### Service Issues
 ```bash
 # Test service reload manually
 ssh target-host 'systemctl reload nginx || systemctl restart nginx'
@@ -420,7 +420,7 @@ ssh target-host 'systemctl status nginx'
 ssh target-host 'openssl s_client -connect localhost:443 -servername yourdomain.com'
 ```
 
-**Permission Issues:**
+### Permission Issues
 ```bash
 # Fix permissions manually
 ./cert-spreader.sh --permissions-fix --dry-run
@@ -432,7 +432,7 @@ ls -la /opt/ssl-certs/domain/
 
 ### Health Checks
 
-**Pre-deployment Validation:**
+### Pre-deployment Validation
 ```bash
 # Comprehensive pre-flight check
 ./cert-spreader.sh --dry-run 2>&1 | tee pre-deployment-check.log
@@ -442,7 +442,7 @@ bash -n cert-spreader.sh
 python3 -m py_compile cert-spreader.py
 ```
 
-**Post-deployment Verification:**
+### Post-deployment Verification
 ```bash
 # Verify certificate deployment
 for host in $(echo $HOSTS); do
@@ -461,7 +461,7 @@ done
 
 Comprehensive test suites are provided for both implementations. See [TESTING.md](TESTING.md) for detailed information.
 
-**Quick Test Commands:**
+### Quick Test Commands
 ```bash
 # Run all tests
 ./test-cert-spreader.sh
@@ -490,7 +490,7 @@ python3 -m unittest test-cert-spreader.TestCustomCertificates -v
 | **Portability** | Unix/Linux only | Cross-platform |
 | **Extensibility** | Moderate | High |
 
-**Recommendation:**
+### Recommendation
 - **Bash**: Choose for minimal dependencies, maximum performance, pure Unix environments
 - **Python**: Choose for better error handling, easier maintenance, team development
 
