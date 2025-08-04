@@ -30,7 +30,6 @@ readonly ERR_SUCCESS=0          # Success
 readonly ERR_CONFIG=1           # Configuration error
 readonly ERR_CERT=2             # Certificate error
 readonly ERR_NETWORK=3          # Network/connectivity error
-readonly ERR_PERMISSION=4       # Permission error
 readonly ERR_VALIDATION=5       # Validation error
 readonly ERR_USAGE=6            # Usage/argument error
 
@@ -967,12 +966,10 @@ check_permissions() {
     local expected_perms="$2"               # Expected permissions in octal (e.g., "644")
     local expected_owner="${3:-$FILE_OWNER:$FILE_GROUP}"  # Expected owner with configurable default
     
-    # DETERMINE PATH TYPE AND CHECK EXISTENCE:
-    local path_type=""
-    if [[ -f "$path" ]]; then
-        path_type="file"
-    elif [[ -d "$path" ]]; then
-        path_type="directory"
+    # CHECK PATH EXISTENCE:
+    if [[ -f "$path" ]] || [[ -d "$path" ]]; then
+        # Path exists as file or directory
+        :  # No-op, continue with function
     else
         return 1  # Return error if path doesn't exist or is neither file nor directory
     fi
@@ -1238,7 +1235,7 @@ main() {
             
             # SEARCH HOST_SERVICES ARRAY:
             for host_config in "${HOST_SERVICES[@]}"; do
-                IFS=':' read -r config_host config_port config_services <<< "$host_config"
+                IFS=':' read -r config_host config_port _config_services <<< "$host_config"
                 if [[ "$config_host" == "$host" ]]; then
                     host_port="$config_port"
                     break  # Found the host, stop searching

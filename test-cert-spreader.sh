@@ -206,8 +206,8 @@ test_source_functions() {
 
 test_build_ssh_command() {
     # Mock SSH_OPTS and DOMAIN for testing
-    SSH_OPTS="-o ConnectTimeout=10"
-    DOMAIN="test.com"
+    export SSH_OPTS="-o ConnectTimeout=10"
+    export DOMAIN="test.com"
     
     local result
     result=$(build_ssh_command "testhost" "22" "echo test")
