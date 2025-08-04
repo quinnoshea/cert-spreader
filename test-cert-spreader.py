@@ -13,7 +13,7 @@ import subprocess
 import pwd
 import grp
 from pathlib import Path
-from unittest.mock import patch, Mock, MagicMock
+from unittest.mock import patch, Mock
 from io import StringIO
 
 # Add the current directory to Python path to import cert-spreader
