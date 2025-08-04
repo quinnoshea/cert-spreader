@@ -4,6 +4,7 @@ First off — thank you for taking the time to contribute! 🚀
 This project welcomes all kinds of contributions, from small bug fixes to major feature implementations.
 
 ## 📋 Code of Conduct
+
 By participating, you agree to uphold the principles of this project's Code of Conduct (to be added later).  
 Be respectful, collaborative, and constructive.
 
