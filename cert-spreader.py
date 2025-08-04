@@ -16,7 +16,7 @@ import logging
 import requests
 import pwd
 import grp
-from typing import List, Optional, Tuple
+from typing import List, Tuple
 from dataclasses import dataclass, field
 
 
@@ -616,7 +616,6 @@ class CertSpreader:
         
         # Generate intermediate PKCS#12 file with secure temp name
         import tempfile
-        import uuid
         with tempfile.NamedTemporaryFile(suffix='.p12', delete=False) as temp_p12_file:
             temp_p12_path = temp_p12_file.name
             temp_p12_name = os.path.basename(temp_p12_path)

@@ -10,9 +10,6 @@ import shutil
 import os
 import sys
 import subprocess
-import pwd
-import grp
-from pathlib import Path
 from unittest.mock import patch, Mock
 from io import StringIO
 
