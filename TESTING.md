@@ -45,12 +45,14 @@ The Certificate Spreader platform provides two comprehensive testing frameworks:
 ### Prerequisites
 
 ### System Requirements
+
 - Linux/Unix environment (Ubuntu 20.04+ / RHEL 8+ recommended)
 - Bash 4.0+ for shell testing
 - Python 3.9+ for Python testing
 - Standard Unix tools: `ssh`, `openssl`, `rsync`
 
 ### Python Testing Dependencies
+
 ```bash
 # Install Python testing requirements
 pip install requests
@@ -65,6 +67,7 @@ sudo dnf install python3-requests python3-unittest2
 ### Test Data Preparation
 
 ### Create Test SSL Certificates
+
 ```bash
 # Generate test certificates for comprehensive testing
 mkdir -p /tmp/cert-spreader-test-certs
@@ -91,12 +94,14 @@ cp ca-cert.pem chain.pem
 ### Quick Test Execution
 
 ### Run All Tests
+
 ```bash
 # Execute both test suites
 ./test-cert-spreader.sh && ./test-cert-spreader.py
 ```
 
 ### Individual Test Suites
+
 ```bash
 # Bash implementation tests
 ./test-cert-spreader.sh
@@ -111,6 +116,7 @@ cp ca-cert.pem chain.pem
 ### Advanced Test Execution
 
 ### Bash Test Environment Management
+
 ```bash
 # Set up isolated test environment
 ./test-cert-spreader.sh --setup
@@ -127,6 +133,7 @@ cp ca-cert.pem chain.pem
 ```
 
 ### Python Test Categories
+
 ```bash
 # Run specific test classes
 python3 -m unittest test-cert-spreader.TestConfig -v
@@ -140,6 +147,7 @@ python3 -m unittest test-cert-spreader.TestConfig.test_default_configuration -v
 ### Enterprise Test Execution
 
 ### Pre-Production Validation
+
 ```bash
 #!/bin/bash
 # enterprise-test-suite.sh - Comprehensive pre-production testing
@@ -184,24 +192,28 @@ echo "=== All Tests Passed ==="
 #### Core Functionality Tests (`test-cert-spreader.sh`)
 
 #### 1. Basic Operations
+
 - Script existence and executability validation
 - Command-line argument parsing and validation
 - Configuration file loading and validation
 - Help system functionality
 
 #### 2. Configuration Management
+
 - Missing configuration file detection
 - Required variable validation
 - Configuration syntax verification
 - Error code accuracy
 
 #### 3. Security Functions
+
 - SSH key validation and connectivity
 - Permission checking and enforcement
 - Certificate hash validation
 - Secure file operations
 
 #### 4. Certificate Generation
+
 - PKCS#12 certificate creation with/without passwords
 - Concatenated certificate generation with DH parameters
 - DER format certificate conversion
@@ -209,6 +221,7 @@ echo "=== All Tests Passed ==="
 - Custom certificate format handling
 
 #### 5. Service Management
+
 - Service reload/restart logic with fallback
 - Host-specific service configuration
 - Error handling and recovery
@@ -218,6 +231,7 @@ echo "=== All Tests Passed ==="
 #### Test Classes (`test-cert-spreader.py`)
 
 #### 1. Configuration Testing (`TestConfig`)
+
 ```python
 class TestConfig(unittest.TestCase):
     """Validate configuration dataclass functionality"""
@@ -233,6 +247,7 @@ class TestConfig(unittest.TestCase):
 ```
 
 #### 2. Certificate Operations (`TestCustomCertificates`)
+
 ```python
 class TestCustomCertificates(unittest.TestCase):
     """Comprehensive certificate format testing"""
@@ -251,6 +266,7 @@ class TestCustomCertificates(unittest.TestCase):
 ```
 
 #### 3. Security Features (`TestSecurityFeatures`)
+
 ```python
 class TestSecurityFeatures(unittest.TestCase):
     """Security functionality validation"""
@@ -266,6 +282,7 @@ class TestSecurityFeatures(unittest.TestCase):
 ```
 
 #### 4. Enterprise Features (`TestEnterpriseFeatures`)
+
 ```python
 class TestEnterpriseFeatures(unittest.TestCase):
     """Enterprise-specific functionality testing"""
@@ -297,6 +314,7 @@ class TestEnterpriseFeatures(unittest.TestCase):
 ### Load Testing Scenarios
 
 #### 1. Multiple Host Deployment
+
 ```bash
 # Test deployment to 50+ hosts
 HOSTS=$(seq -f "server-%02g" 1 50 | tr '\n' ' ')
@@ -304,6 +322,7 @@ time ./cert-spreader.sh --dry-run
 ```
 
 #### 2. Certificate Format Performance
+
 ```bash
 # Test multiple certificate format generation
 CUSTOM_CERTIFICATES=(
@@ -314,6 +333,7 @@ time ./cert-spreader.py --dry-run
 ```
 
 #### 3. Network Latency Simulation
+
 ```bash
 # Test with simulated network delays
 SSH_OPTS="-o ConnectTimeout=30 -o ServerAliveInterval=5"
@@ -336,6 +356,7 @@ time ./cert-spreader.sh --dry-run
 ### Security Test Categories
 
 #### 1. Configuration Security
+
 ```bash
 # Test configuration file permissions
 chmod 777 config.conf
@@ -347,6 +368,7 @@ export PROXMOX_TOKEN="test-token"
 ```
 
 #### 2. SSH Security Validation
+
 ```bash
 # Test SSH key permissions
 chmod 644 ~/.ssh/cert_spreader_key
@@ -357,6 +379,7 @@ SSH_OPTS="-o StrictHostKeyChecking=no"  # Should be flagged as insecure
 ```
 
 #### 3. Certificate Security
+
 ```bash
 # Test certificate file permissions
 FILE_PERMISSIONS=644
@@ -381,6 +404,7 @@ PRIVKEY_PERMISSIONS=600
 ### End-to-End Test Scenarios
 
 #### 1. Complete Deployment Workflow
+
 ```bash
 #!/bin/bash
 # integration-test-full-deployment.sh
@@ -405,6 +429,7 @@ PRIVKEY_PERMISSIONS=600
 ```
 
 #### 2. Multi-Platform Certificate Testing
+
 ```bash
 # Test all supported certificate formats
 CUSTOM_CERTIFICATES=(
@@ -433,6 +458,7 @@ CUSTOM_CERTIFICATES=(
 ### GitHub Actions Integration
 
 #### `.github/workflows/test.yml`
+
 ```yaml
 name: Certificate Spreader Tests
 
@@ -476,6 +502,7 @@ jobs:
 ### Pre-Commit Hooks
 
 #### `.pre-commit-config.yaml`
+
 ```yaml
 repos:
   - repo: local
@@ -506,6 +533,7 @@ repos:
 ### Bash Test Configuration
 
 #### Test Environment Configuration (`/tmp/cert-spreader-tests/test-config.conf`)
+
 ```bash
 # Test configuration for Bash testing framework
 DOMAIN="test.example.com"
@@ -546,6 +574,7 @@ FILE_GROUP=ssl-cert
 ### Python Test Configuration
 
 #### Mock Configuration for Python Testing
+
 ```python
 # test-cert-spreader.py configuration
 TEST_CONFIG = {
@@ -577,6 +606,7 @@ TEST_CONFIG = {
 ### Adding New Tests
 
 #### 1. Bash Test Functions
+
 ```bash
 # Add to test-cert-spreader.sh
 test_new_feature() {
@@ -599,6 +629,7 @@ run_all_tests() {
 ```
 
 #### 2. Python Test Classes
+
 ```python
 # Add to test-cert-spreader.py
 class TestNewFeature(unittest.TestCase):
@@ -627,6 +658,7 @@ class TestNewFeature(unittest.TestCase):
 ### Test Quality Standards
 
 #### Enterprise Test Requirements
+
 - **Comprehensive Coverage**: All code paths and error conditions
 - **Idempotent Tests**: Tests can be run multiple times safely
 - **Isolated Environment**: Tests don't interfere with each other
@@ -634,6 +666,7 @@ class TestNewFeature(unittest.TestCase):
 - **Performance Awareness**: Tests complete within reasonable time limits
 
 #### Test Documentation Standards
+
 ```bash
 # Bash test function documentation
 test_certificate_generation() {
@@ -677,6 +710,7 @@ class TestCertificateGeneration(unittest.TestCase):
 ### Common Test Issues
 
 #### 1. Permission Issues
+
 ```bash
 # Fix test environment permissions
 sudo chown -R $(whoami):$(whoami) /tmp/cert-spreader-tests/
@@ -684,6 +718,7 @@ chmod -R 755 /tmp/cert-spreader-tests/
 ```
 
 #### 2. Missing Dependencies
+
 ```bash
 # Install missing test dependencies
 sudo apt-get install -y openssl python3-requests python3-unittest2
@@ -693,6 +728,7 @@ python3 -c "import requests, unittest, tempfile, subprocess"
 ```
 
 #### 3. SSH Key Issues
+
 ```bash
 # Generate test SSH key
 ssh-keygen -t ed25519 -f ~/.ssh/test_cert_spreader_key -N ""
@@ -702,6 +738,7 @@ chmod 600 ~/.ssh/test_cert_spreader_key
 ### Test Debugging
 
 #### Enable Debug Mode
+
 ```bash
 # Bash debugging
 bash -x ./test-cert-spreader.sh
@@ -721,12 +758,14 @@ DEBUG=1 ./cert-spreader.py --dry-run  # Debug mode
 ### Test Metrics & Reporting
 
 #### Key Performance Indicators
+
 - Test success rate: > 99%
 - Test execution time: < 5 minutes (full suite)
 - Code coverage: > 90%
 - Security test coverage: 100%
 
 #### Automated Reporting
+
 ```bash
 # Generate test report
 ./test-cert-spreader.sh --report > test-report-bash.txt
