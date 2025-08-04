@@ -422,7 +422,7 @@ class CertSpreader:
         }
         return defaults.get(cert_type, f"certificate.{cert_type}")
     
-    def _generate_pkcs12_certificate(self, filename: str, password: str = '') -> None:
+    def _generate_pkcs12_certificate(self, filename: str, password: str = None) -> None:
         """Generate PKCS12/PFX certificate"""
         self.log(f"Generating PKCS12 certificate: {filename}")
         cert_path = os.path.join(self.config.cert_dir, filename)
@@ -593,7 +593,7 @@ class CertSpreader:
         except IOError as e:
             self.log(f"ERROR: Failed to generate CA bundle certificate {filename}: {e}")
     
-    def _generate_jks_certificate(self, filename: str, password: str = '') -> None:
+    def _generate_jks_certificate(self, filename: str, password: str = None) -> None:
         """Generate JKS (Java KeyStore) certificate via PKCS#12 intermediate"""
         self.log(f"Generating JKS certificate: {filename}")
         
