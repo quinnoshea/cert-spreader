@@ -617,8 +617,9 @@ class CertSpreader:
         # Generate intermediate PKCS#12 file with secure temp name
         import tempfile
         import uuid
-        temp_p12_name = f".temp_{uuid.uuid4().hex[:8]}.p12"
-        temp_p12_path = os.path.join(self.config.cert_dir, temp_p12_name)
+        with tempfile.NamedTemporaryFile(suffix='.p12', delete=False) as temp_p12_file:
+            temp_p12_path = temp_p12_file.name
+            temp_p12_name = os.path.basename(temp_p12_path)
         
         try:
             # Step 1: Generate PKCS#12 intermediate using existing method

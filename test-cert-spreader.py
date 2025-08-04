@@ -695,32 +695,34 @@ CONCATENATED_FILENAME="combined.pem"
     def test_jks_generation_without_keytool(self, mock_subprocess):
         """Test JKS generation behavior when keytool is not available"""
         spreader = CertSpreader("test.conf")
-        spreader.config.cert_dir = "/tmp/test"
-        
-        # Mock keytool unavailability
-        with patch.object(spreader, '_check_keytool_available', return_value=False):
-            # Capture log messages
-            with patch.object(spreader, 'log') as mock_log:
-                spreader._generate_jks_certificate("test.jks", "password")
-                
-                # Verify error message was logged
-                mock_log.assert_any_call("ERROR: JKS generation requires Java keytool (install Java JDK/JRE)")
-                mock_log.assert_any_call("Alternative: Generate PKCS#12 with 'pkcs12:password:test.pfx' and convert manually")
+        with tempfile.TemporaryDirectory() as temp_dir:
+            spreader.config.cert_dir = temp_dir
+            
+            # Mock keytool unavailability
+            with patch.object(spreader, '_check_keytool_available', return_value=False):
+                # Capture log messages
+                with patch.object(spreader, 'log') as mock_log:
+                    spreader._generate_jks_certificate("test.jks", "password")
+                    
+                    # Verify error message was logged
+                    mock_log.assert_any_call("ERROR: JKS generation requires Java keytool (install Java JDK/JRE)")
+                    mock_log.assert_any_call("Alternative: Generate PKCS#12 with 'pkcs12:password:test.pfx' and convert manually")
     
     @patch('subprocess.run')
     def test_jks_generation_without_password(self, mock_subprocess):
         """Test JKS generation behavior when password is missing"""
         spreader = CertSpreader("test.conf")
-        spreader.config.cert_dir = "/tmp/test"
-        
-        # Mock keytool availability
-        with patch.object(spreader, '_check_keytool_available', return_value=True):
-            # Capture log messages
-            with patch.object(spreader, 'log') as mock_log:
-                spreader._generate_jks_certificate("test.jks", "")
-                
-                # Verify error message was logged
-                mock_log.assert_any_call("ERROR: JKS certificates require a password. Use format: 'jks:password:test.jks'")
+        with tempfile.TemporaryDirectory() as temp_dir:
+            spreader.config.cert_dir = temp_dir
+            
+            # Mock keytool availability
+            with patch.object(spreader, '_check_keytool_available', return_value=True):
+                # Capture log messages
+                with patch.object(spreader, 'log') as mock_log:
+                    spreader._generate_jks_certificate("test.jks", "")
+                    
+                    # Verify error message was logged
+                    mock_log.assert_any_call("ERROR: JKS certificates require a password. Use format: 'jks:password:test.jks'")
 
 
 if __name__ == '__main__':
