@@ -4,6 +4,7 @@
 ![Bash](https://img.shields.io/badge/bash-4.0%2B-2ECC71)
 ![Python](https://img.shields.io/badge/python-3.9%2B-3498DB)
 [![Codacy Badge](https://app.codacy.com/project/badge/Grade/2b2bed5783c842dc89ab5c56adcb2896)](https://app.codacy.com?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade)
+[![Codacy Badge](https://app.codacy.com/project/badge/Coverage/2b2bed5783c842dc89ab5c56adcb2896)](https://app.codacy.com?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_coverage)
 ![Status](https://img.shields.io/badge/status-active-success)
 [![CI](https://github.com/quinnoshea/cert-spreader/actions/workflows/ci-workflow.yml/badge.svg)](https://github.com/quinnoshea/cert-spreader/actions/workflows/ci-workflow.yml)
 
