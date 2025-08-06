@@ -677,27 +677,29 @@ get_default_filename() {
 # Check if certificate needs to be regenerated based on source file timestamps
 check_certificate_needs_generation() {
     local cert_path="$1"
-    shift  # Remove first argument, rest are source files
-    local source_files=("$@")
+    shift
     
     # If certificate doesn't exist, it needs generation
     if [[ ! -f "$cert_path" ]]; then
-        return 0  # true - needs generation
+        return 0
     fi
     
-    local cert_mtime=$(stat -c %Y "$cert_path" 2>/dev/null || echo 0)
+    local cert_mtime
+    cert_mtime=$(stat -c %Y "$cert_path" 2>/dev/null) || cert_mtime=0
     
     # Check if any source file is newer than the certificate
-    for source_file in "${source_files[@]}"; do
+    local source_file
+    for source_file in "$@"; do
         if [[ -f "$source_file" ]]; then
-            local source_mtime=$(stat -c %Y "$source_file" 2>/dev/null || echo 0)
+            local source_mtime
+            source_mtime=$(stat -c %Y "$source_file" 2>/dev/null) || source_mtime=0
             if [[ $source_mtime -gt $cert_mtime ]]; then
-                return 0  # true - needs generation
+                return 0
             fi
         fi
     done
     
-    return 1  # false - up to date
+    return 1
 }
 
 # PKCS12/PFX CERTIFICATE GENERATOR:
@@ -749,16 +751,17 @@ generate_concatenated_certificate() {
     local dhparam_file="$2"
     local cert_path="$CERT_DIR/$filename"
     
-    # Build source files array
-    local source_files=("$CERT_DIR/privkey.pem" "$CERT_DIR/fullchain.pem")
-    if [[ -n "$dhparam_file" && -f "$dhparam_file" ]]; then
-        source_files+=("$dhparam_file")
-    fi
-    
     # Check if certificate needs to be regenerated
-    if ! check_certificate_needs_generation "$cert_path" "${source_files[@]}"; then
-        log "Concatenated certificate up to date: $filename"
-        return
+    if [[ -n "$dhparam_file" && -f "$dhparam_file" ]]; then
+        if ! check_certificate_needs_generation "$cert_path" "$CERT_DIR/privkey.pem" "$CERT_DIR/fullchain.pem" "$dhparam_file"; then
+            log "Concatenated certificate up to date: $filename"
+            return
+        fi
+    else
+        if ! check_certificate_needs_generation "$cert_path" "$CERT_DIR/privkey.pem" "$CERT_DIR/fullchain.pem"; then
+            log "Concatenated certificate up to date: $filename"
+            return
+        fi
     fi
     
     log "Generating concatenated certificate: $filename"
