@@ -228,6 +228,9 @@ load_config() {
     LOCAL_SERVICE="${LOCAL_SERVICE:-}"                   # Local service to manage (empty = skip)
     LOCAL_SERVICE_MANAGER="${LOCAL_SERVICE_MANAGER:-systemctl}" # Service manager command
     
+    # Remote service configuration (new configurable service management)
+    SERVICE_MANAGER="${SERVICE_MANAGER:-systemctl}"      # Default service manager for remote hosts
+    
     # ENHANCED CONFIGURATION VALIDATION
     validate_config
 }
@@ -433,6 +436,53 @@ deploy_to_host() {
     return $ERR_SUCCESS  # Return success
 }
 
+# PARSE HOST SERVICE ENTRY FUNCTION:
+# Parse HOST_SERVICES entry supporting both legacy and enhanced formats
+# Legacy format: "hostname:port:service1,service2,service3"  
+# Enhanced format: "hostname:port:service_manager:service1,service2,service3"
+# Returns: host port service_manager services (via global variables)
+parse_host_service_entry() {
+    local entry="$1"
+    local -a parts
+    
+    # Split entry by colons, handling up to 4 parts
+    IFS=':' read -ra parts <<< "$entry"
+    
+    # Validate minimum format
+    if [[ ${#parts[@]} -lt 3 ]]; then
+        echo "ERROR: Invalid HOST_SERVICES format: $entry" >&2
+        return 1
+    fi
+    
+    local host="${parts[0]}"
+    local port="${parts[1]}"
+    
+    # Validate port is numeric
+    if ! [[ "$port" =~ ^[0-9]+$ ]]; then
+        echo "ERROR: Invalid port in HOST_SERVICES: $port" >&2
+        return 1
+    fi
+    
+    # Detect format by checking if third part looks like service manager
+    if [[ ${#parts[@]} -eq 4 && -n "${parts[2]}" && ! "${parts[2]}" =~ , && -n "${parts[3]}" ]]; then
+        # Enhanced format: hostname:port:service_manager:services
+        local service_manager="${parts[2]}"
+        local services="${parts[3]}"
+    else
+        # Legacy format: hostname:port:services
+        local service_manager="${SERVICE_MANAGER:-systemctl}"
+        local services="${parts[2]}"
+    fi
+    
+    # Return values via global variables (bash best practice for multiple returns)
+    PARSED_HOST="$host"
+    PARSED_PORT="$port"
+    PARSED_SERVICE_MANAGER="$service_manager"
+    PARSED_SERVICES="$services"
+    
+    return 0
+}
+
 # SERVICE RESTART FUNCTION:
 # This function restarts services on remote hosts after certificate deployment
 # It demonstrates array processing, string manipulation, and SSH command execution
@@ -453,11 +503,16 @@ restart_services() {
     
     # ARRAY ITERATION: Process each host configuration
     for host_config in "${HOST_SERVICES[@]}"; do
-        # STRING SPLITTING: IFS (Internal Field Separator) controls how strings are split
-        # read -r prevents backslash interpretation
-        # <<< is a "here string" - feeds the string as input to read command
-        # This splits "host:port:service1,service2" into separate variables
-        IFS=':' read -r host port services <<< "$host_config"
+        # PARSE HOST SERVICE ENTRY: Use enhanced parser supporting both formats
+        if ! parse_host_service_entry "$host_config"; then
+            continue  # Skip invalid entries (error already logged)
+        fi
+        
+        # Extract parsed values from global variables
+        local host="$PARSED_HOST"
+        local port="$PARSED_PORT"
+        local service_manager="$PARSED_SERVICE_MANAGER"
+        local services="$PARSED_SERVICES"
         
         # CHECK IF THIS HOST HAD CERTIFICATES DEPLOYED:
         # Only restart services on hosts where certificates were actually deployed
@@ -475,23 +530,23 @@ restart_services() {
         fi
         
         if [[ "$DRY_RUN" == true ]]; then
-            log "Would restart services on $host:$port - $services"
+            log "Would restart services on $host:$port using $service_manager - $services"
             continue  # Skip to next iteration of loop
         fi
         
-        log "Restarting services on $host: $services"
+        log "Restarting services on $host using $service_manager: $services"
         
-        # BUILD SYSTEMCTL COMMAND WITH FALLBACK:
-        # Try reload first, then restart if reload fails
+        # BUILD SERVICE COMMAND WITH CONFIGURABLE MANAGER AND FALLBACK:
+        # Try reload first, then restart if reload fails (same pattern as local service)
         local service_cmd=""
         
         # SPLIT SERVICES: Convert comma-separated services into array
         # -a flag makes service_array an indexed array
         IFS=',' read -ra service_array <<< "$services"
         
-        # BUILD COMMAND STRING: Try reload, fallback to restart
+        # BUILD COMMAND STRING: Try reload, fallback to restart with configurable manager
         for service in "${service_array[@]}"; do
-            service_cmd+="(systemctl reload $service || systemctl restart $service) && "
+            service_cmd+="(${service_manager} reload $service || ${service_manager} restart $service) && "
         done
         
         # STRING MANIPULATION: Remove trailing " && "

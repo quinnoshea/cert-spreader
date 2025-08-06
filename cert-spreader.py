@@ -68,6 +68,8 @@ class Config:
     # Local service configuration
     local_service: str = ""              # Local service to manage (empty = skip)
     local_service_manager: str = "systemctl"  # Service manager command
+    # Remote service configuration
+    service_manager: str = "systemctl"   # Default service manager for remote hosts
 
 
 class CertSpreader:
@@ -142,7 +144,8 @@ class CertSpreader:
             'FILE_OWNER': 'root',
             'FILE_GROUP': 'root',
             'LOCAL_SERVICE': '',
-            'LOCAL_SERVICE_MANAGER': 'systemctl'
+            'LOCAL_SERVICE_MANAGER': 'systemctl',
+            'SERVICE_MANAGER': 'systemctl'
         }
         
         try:
@@ -295,6 +298,9 @@ class CertSpreader:
         # Parse local service configuration
         self.config.local_service = config_vars.get('LOCAL_SERVICE', '')
         self.config.local_service_manager = config_vars.get('LOCAL_SERVICE_MANAGER', 'systemctl')
+        
+        # Parse remote service configuration
+        self.config.service_manager = config_vars.get('SERVICE_MANAGER', 'systemctl')
         
         # Parse arrays from extracted bash arrays
         self.config.host_services = arrays.get('HOST_SERVICES', [])
@@ -819,6 +825,40 @@ class CertSpreader:
             except OSError as e:
                 self.log(f"WARNING: Failed to cleanup intermediate file {temp_p12_name}: {e}")
     
+    def _parse_host_service_entry(self, entry: str) -> Tuple[str, int, str, str]:
+        """Parse HOST_SERVICES entry supporting both legacy and enhanced formats
+        
+        Legacy format: "hostname:port:service1,service2,service3"
+        Enhanced format: "hostname:port:service_manager:service1,service2,service3"
+        
+        Returns: (hostname, port, service_manager, services)
+        """
+        parts = entry.split(':', 3)
+        
+        if len(parts) < 3:
+            raise ValueError(f"Invalid HOST_SERVICES format: {entry}")
+        
+        host = parts[0]
+        try:
+            port = int(parts[1])
+        except ValueError:
+            raise ValueError(f"Invalid port in HOST_SERVICES: {parts[1]}")
+        
+        # Detect format by checking if third part looks like service manager
+        if (len(parts) == 4 and 
+            parts[2] and 
+            not ',' in parts[2] and 
+            parts[3]):
+            # Enhanced format: hostname:port:service_manager:services
+            service_manager = parts[2]
+            services = parts[3]
+        else:
+            # Legacy format: hostname:port:services
+            service_manager = self.config.service_manager
+            services = parts[2] if len(parts) >= 3 else ""
+        
+        return host, port, service_manager, services
+
     def restart_services(self) -> None:
         """Restart services on remote hosts with reload fallback"""
         self.log("Processing service restarts")
@@ -832,17 +872,10 @@ class CertSpreader:
             return
         
         for host_config in self.config.host_services:
-            # Parse host:port:services format
-            parts = host_config.split(':', 2)
-            if len(parts) != 3:
-                self.log(f"ERROR: Invalid HOST_SERVICES format: {host_config}")
-                continue
-            
-            host, port_str, services = parts
             try:
-                port = int(port_str)
-            except ValueError:
-                self.log(f"ERROR: Invalid port in HOST_SERVICES: {port_str}")
+                host, port, service_manager, services = self._parse_host_service_entry(host_config)
+            except ValueError as e:
+                self.log(f"ERROR: {e}")
                 continue
             
             # Check if this host had certificates deployed
@@ -851,19 +884,19 @@ class CertSpreader:
                 continue
             
             if self.dry_run:
-                self.log(f"Would restart services on {host}:{port} - {services}")
+                self.log(f"Would restart services on {host}:{port} using {service_manager} - {services}")
                 continue
             
-            self.log(f"Restarting services on {host}: {services}")
+            self.log(f"Restarting services on {host} using {service_manager}: {services}")
             
-            # Build systemctl command with reload fallback
+            # Build service command with configurable manager and reload fallback
             service_list = services.split(',')
             service_commands = []
             
             for service in service_list:
                 service = service.strip()
-                # Try reload first, fallback to restart
-                service_commands.append(f"(systemctl reload {service} || systemctl restart {service})")
+                # Try reload first, fallback to restart (same pattern as local service)
+                service_commands.append(f"({service_manager} reload {service} || {service_manager} restart {service})")
             
             # Join commands with &&
             full_command = " && ".join(service_commands)

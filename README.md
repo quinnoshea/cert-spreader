@@ -147,14 +147,24 @@ LOG_FILE="/var/log/cert-spreader/cert-spreader.log"
 SSH_OPTS="-o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new"
 
 # Target hosts
-HOSTS="web-01 web-02 app-01 db-01"
+HOSTS="web-01 web-02 app-01 db-01 legacy-host alpine-host"
+
+# Default service manager for remote hosts
+SERVICE_MANAGER="systemctl"              # Global default (systemctl, service, rc-service, etc.)
 
 # Service configuration per host
+# Legacy format: "hostname:port:service1,service2,service3" (uses SERVICE_MANAGER default)
+# Enhanced format: "hostname:port:service_manager:service1,service2,service3"
 HOST_SERVICES=(
+    # Modern systemd hosts (use global SERVICE_MANAGER default)
     "web-01:22:nginx,apache2"
     "web-02:22:nginx"
     "app-01:2222:myapp,redis"
     "db-01:22:mysql"
+    
+    # Mixed environments with explicit service managers
+    "legacy-host:22:service:nginx,apache2"        # SysV init (older RHEL/CentOS)
+    "alpine-host:22:rc-service:nginx,php-fpm82"   # OpenRC (Alpine Linux)
 )
 ```
 
@@ -201,6 +211,32 @@ LOCAL_SERVICE_MANAGER="systemctl" # Service manager (systemctl, service, rc-serv
 # LOCAL_SERVICE="httpd" LOCAL_SERVICE_MANAGER="service"       # RHEL/CentOS SysV init  
 # LOCAL_SERVICE="nginx" LOCAL_SERVICE_MANAGER="rc-service"    # Alpine/OpenRC
 # LOCAL_SERVICE=""                                            # Disable local service management
+```
+
+### Remote Service Configuration
+
+```bash
+# Global default service manager for remote hosts
+SERVICE_MANAGER="systemctl"       # Default for all remote hosts
+
+# Enhanced HOST_SERVICES format supporting mixed environments:
+HOST_SERVICES=(
+    # Legacy format (uses SERVICE_MANAGER default)
+    "web-server:22:nginx,apache2"
+    "database:22:mysql,redis"
+    
+    # Enhanced format with explicit service managers
+    "legacy-rhel6:22:service:httpd,postfix"         # SysV init
+    "alpine-server:22:rc-service:nginx,php-fpm82"   # OpenRC
+    "freebsd-host:22:service:nginx,mysql-server"    # BSD service
+    "custom-host:22:/usr/local/bin/svc:myapp"       # Custom service manager
+)
+
+# Service manager compatibility matrix:
+# systemctl    - systemd (Ubuntu 16+, RHEL 7+, SUSE 12+)
+# service      - SysV init (older RHEL/CentOS, Debian, FreeBSD)
+# rc-service   - OpenRC (Alpine, Gentoo)
+# custom path  - Custom service management scripts
 ```
 
 ### Proxmox Integration
