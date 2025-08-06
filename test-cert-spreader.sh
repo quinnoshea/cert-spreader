@@ -288,10 +288,10 @@ test_service_restart_logic() {
         local function_body
         function_body=$(declare -f restart_services)
         
-        if [[ "$function_body" == *"systemctl reload"* && "$function_body" == *"systemctl restart"* ]]; then
-            assert_success 0 "restart_services contains both reload and restart commands"
+        if [[ "$function_body" == *"reload"* && "$function_body" == *"restart"* && "$function_body" == *"service_manager"* ]]; then
+            assert_success 0 "restart_services contains both reload and restart commands with configurable service manager"
         else
-            assert_failure 0 "restart_services should contain both reload and restart commands"
+            assert_failure 0 "restart_services should contain both reload and restart commands with configurable service manager"
         fi
         
         if [[ "$function_body" == *"DEPLOYED_HOSTS"* ]]; then
