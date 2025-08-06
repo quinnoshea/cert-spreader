@@ -10,15 +10,15 @@
 
 ## Overview
 
-**Enterprise-grade SSL certificate deployment and management platform** for automating the secure distribution of certificates across distributed infrastructure. Supports multiple certificate formats, intelligent service management, and comprehensive audit logging.
+A practical SSL certificate deployment tool for automating the secure distribution of certificates across multiple hosts. Supports multiple certificate formats, service management, and comprehensive logging.
 
 ### Key Capabilities
 
-- **Multi-platform certificate generation**: PKCS#12, PEM, DER, JKS, and custom formats
+- **Multi-format certificate generation**: PKCS#12, PEM, DER, JKS, and custom formats
 - **Intelligent service management**: Automatic reload/restart with fallback handling  
-- **Enterprise security**: Configurable permissions, SSH key authentication, audit logging
+- **Security-focused**: Configurable permissions, SSH key authentication, audit logging
 - **Dual implementation**: Identical functionality in both Bash and Python
-- **Production-ready**: Idempotent operations, comprehensive error handling, dry-run validation
+- **Reliable operations**: Idempotent operations, comprehensive error handling, dry-run validation
 
 ---
 
@@ -79,7 +79,7 @@ ssh-copy-id -i ~/.ssh/cert_spreader_key user@target-host
 
 ## Installation
 
-### Production Deployment
+### System Deployment
 
 ```bash
 # Create dedicated system user (recommended)
@@ -343,7 +343,7 @@ export PROXMOX_TOKEN="your-token-here"
 
 ### Configuration Examples
 
-### Enterprise Web Infrastructure
+### Web Infrastructure
 
 ```bash
 CUSTOM_CERTIFICATES=(
@@ -571,4 +571,4 @@ See [LICENSE](LICENSE) for full terms.
 
 ---
 
-*Enterprise-grade SSL certificate management for modern infrastructure.*
+*Practical SSL certificate management for distributed infrastructure.*
