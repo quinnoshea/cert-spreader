@@ -208,6 +208,20 @@ class CertSpreader:
         
         return value
 
+    def _check_certificate_changed(self, cert_path: str, source_files: List[str]) -> bool:
+        """Check if certificate needs to be regenerated based on source file timestamps"""
+        if not os.path.exists(cert_path):
+            return True  # Certificate doesn't exist, needs generation
+        
+        cert_mtime = os.path.getmtime(cert_path)
+        
+        # Check if any source file is newer than the certificate
+        for source_file in source_files:
+            if os.path.exists(source_file) and os.path.getmtime(source_file) > cert_mtime:
+                return True
+        
+        return False
+
     def load_config(self) -> None:
         """Load configuration from file"""
         if not os.path.isfile(self.config_file):
@@ -496,11 +510,24 @@ class CertSpreader:
     
     def _generate_pkcs12_certificate(self, filename: str, password: Optional[str] = None) -> None:
         """Generate PKCS12/PFX certificate"""
-        self.log(f"Generating PKCS12 certificate: {filename}")
         cert_path = os.path.join(self.config.cert_dir, filename)
+        
+        # Check if certificate needs to be regenerated
+        source_files = [
+            os.path.join(self.config.cert_dir, 'privkey.pem'),
+            os.path.join(self.config.cert_dir, 'cert.pem'),
+            os.path.join(self.config.cert_dir, 'fullchain.pem')
+        ]
+        
+        if not self._check_certificate_changed(cert_path, source_files):
+            self.log(f"PKCS12 certificate up to date: {filename}")
+            return
+        
+        self.log(f"Generating PKCS12 certificate: {filename}")
         
         if self.dry_run:
             self.log(f"Would generate PKCS12 certificate: {cert_path}")
+            self.local_cert_changed = True
             return
         
         # Build OpenSSL command
@@ -528,11 +555,25 @@ class CertSpreader:
     
     def _generate_concatenated_certificate(self, filename: str, dhparam_file: str = '') -> None:
         """Generate concatenated certificate (private key + certificate + chain + optional DH params)"""
-        self.log(f"Generating concatenated certificate: {filename}")
         cert_path = os.path.join(self.config.cert_dir, filename)
+        
+        # Check if certificate needs to be regenerated
+        source_files = [
+            os.path.join(self.config.cert_dir, 'privkey.pem'),
+            os.path.join(self.config.cert_dir, 'fullchain.pem')
+        ]
+        if dhparam_file and os.path.isfile(dhparam_file):
+            source_files.append(dhparam_file)
+        
+        if not self._check_certificate_changed(cert_path, source_files):
+            self.log(f"Concatenated certificate up to date: {filename}")
+            return
+        
+        self.log(f"Generating concatenated certificate: {filename}")
         
         if self.dry_run:
             self.log(f"Would generate concatenated certificate: {cert_path}")
+            self.local_cert_changed = True
             return
         
         try:

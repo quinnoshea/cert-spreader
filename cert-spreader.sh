@@ -673,17 +673,51 @@ get_default_filename() {
     esac
 }
 
+# CERTIFICATE CHANGE DETECTION FOR LOCAL GENERATION:
+# Check if certificate needs to be regenerated based on source file timestamps
+check_certificate_needs_generation() {
+    local cert_path="$1"
+    shift  # Remove first argument, rest are source files
+    local source_files=("$@")
+    
+    # If certificate doesn't exist, it needs generation
+    if [[ ! -f "$cert_path" ]]; then
+        return 0  # true - needs generation
+    fi
+    
+    local cert_mtime=$(stat -c %Y "$cert_path" 2>/dev/null || echo 0)
+    
+    # Check if any source file is newer than the certificate
+    for source_file in "${source_files[@]}"; do
+        if [[ -f "$source_file" ]]; then
+            local source_mtime=$(stat -c %Y "$source_file" 2>/dev/null || echo 0)
+            if [[ $source_mtime -gt $cert_mtime ]]; then
+                return 0  # true - needs generation
+            fi
+        fi
+    done
+    
+    return 1  # false - up to date
+}
+
 # PKCS12/PFX CERTIFICATE GENERATOR:
 # Creates PKCS12 format certificates with optional password
 generate_pkcs12_certificate() {
     local filename="$1"
     local password="$2"
+    local cert_path="$CERT_DIR/$filename"
+    
+    # Check if certificate needs to be regenerated
+    if ! check_certificate_needs_generation "$cert_path" "$CERT_DIR/privkey.pem" "$CERT_DIR/cert.pem" "$CERT_DIR/fullchain.pem"; then
+        log "PKCS12 certificate up to date: $filename"
+        return
+    fi
     
     log "Generating PKCS12 certificate: $filename"
-    local cert_path="$CERT_DIR/$filename"
     
     if [[ "$DRY_RUN" == true ]]; then
         log "Would generate PKCS12 certificate: $cert_path"
+        LOCAL_CERT_CHANGED=true
         return
     fi
     
@@ -713,12 +747,25 @@ generate_pkcs12_certificate() {
 generate_concatenated_certificate() {
     local filename="$1"
     local dhparam_file="$2"
+    local cert_path="$CERT_DIR/$filename"
+    
+    # Build source files array
+    local source_files=("$CERT_DIR/privkey.pem" "$CERT_DIR/fullchain.pem")
+    if [[ -n "$dhparam_file" && -f "$dhparam_file" ]]; then
+        source_files+=("$dhparam_file")
+    fi
+    
+    # Check if certificate needs to be regenerated
+    if ! check_certificate_needs_generation "$cert_path" "${source_files[@]}"; then
+        log "Concatenated certificate up to date: $filename"
+        return
+    fi
     
     log "Generating concatenated certificate: $filename"
-    local cert_path="$CERT_DIR/$filename"
     
     if [[ "$DRY_RUN" == true ]]; then
         log "Would generate concatenated certificate: $cert_path"
+        LOCAL_CERT_CHANGED=true
         return
     fi
     
@@ -745,10 +792,17 @@ generate_der_certificate() {
     local filename="$1"
     local cert_path="$CERT_DIR/$filename"
     
+    # Check if certificate needs to be regenerated
+    if ! check_certificate_needs_generation "$cert_path" "$CERT_DIR/cert.pem"; then
+        log "DER certificate up to date: $filename"
+        return 0
+    fi
+    
     log "Generating DER certificate: $filename"
     
     if [[ "$DRY_RUN" == true ]]; then
         log "Would generate DER certificate: $cert_path"
+        LOCAL_CERT_CHANGED=true
         return 0
     fi
     
