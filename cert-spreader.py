@@ -16,7 +16,8 @@ import logging
 import requests
 import pwd
 import grp
-from typing import List, Tuple
+import re
+from typing import List, Tuple, Dict, Optional
 from dataclasses import dataclass, field
 
 
@@ -29,6 +30,11 @@ class ExitCodes:
     PERMISSION = 4
     VALIDATION = 5
     USAGE = 6
+
+
+class ConfigError(Exception):
+    """Exception raised for configuration file parsing errors"""
+    pass
 
 
 @dataclass
@@ -105,6 +111,102 @@ class CertSpreader:
         except (subprocess.SubprocessError, FileNotFoundError):
             pass  # logger command not available or failed
     
+    def _parse_bash_config(self, config_file: str) -> Dict[str, str]:
+        """Safely parse bash-style configuration files without shell execution"""
+        config_vars = {}
+        env_vars = {}
+        
+        # Define expected variables with defaults
+        defaults = {
+            'DOMAIN': '',
+            'CERT_DIR': '',
+            'SSH_OPTS': '',
+            'LOG_FILE': '',
+            'HOSTS': '',
+            'PROXMOX_USER': '',
+            'PROXMOX_TOKEN': '',
+            'PROXMOX_VERIFY_SSL': 'false',
+            'PKCS12_ENABLED': 'false',
+            'PKCS12_PASSWORD': '',
+            'PKCS12_FILENAME': 'certificate.pfx',
+            'CONCATENATED_ENABLED': 'false',
+            'CONCATENATED_DHPARAM_FILE': '',
+            'CONCATENATED_FILENAME': 'combined.pem',
+            'FILE_PERMISSIONS': '644',
+            'PRIVKEY_PERMISSIONS': '600',
+            'DIRECTORY_PERMISSIONS': '755',
+            'FILE_OWNER': 'root',
+            'FILE_GROUP': 'root'
+        }
+        
+        try:
+            with open(config_file, 'r') as f:
+                for line_num, line in enumerate(f, 1):
+                    line = line.strip()
+                    
+                    # Skip empty lines and comments
+                    if not line or line.startswith('#'):
+                        continue
+                    
+                    # Handle variable assignments
+                    if '=' in line and not line.startswith('export '):
+                        self._parse_variable_assignment(line, env_vars, line_num)
+                    elif line.startswith('export ') and '=' in line:
+                        # Handle export statements
+                        assignment = line[7:]  # Remove 'export '
+                        self._parse_variable_assignment(assignment, env_vars, line_num)
+        
+        except FileNotFoundError:
+            raise ConfigError(f"Configuration file not found: {config_file}")
+        except PermissionError:
+            raise ConfigError(f"Permission denied reading config file: {config_file}")
+        
+        # Apply defaults for missing variables
+        for key, default_value in defaults.items():
+            config_vars[key] = env_vars.get(key, default_value)
+        
+        return config_vars
+
+    def _parse_variable_assignment(self, assignment: str, env_vars: Dict[str, str], line_num: int) -> None:
+        """Parse a single variable assignment with basic expansion support"""
+        try:
+            key, value = assignment.split('=', 1)
+            key = key.strip()
+            
+            # Validate variable name (alphanumeric + underscore only)
+            if not re.match(r'^[A-Z_][A-Z0-9_]*$', key):
+                self.log(f"WARNING: Invalid variable name '{key}' at line {line_num}")
+                return
+            
+            # Remove quotes and perform basic variable substitution
+            value = self._expand_variables(value.strip(), env_vars)
+            env_vars[key] = value
+            
+        except ValueError:
+            self.log(f"WARNING: Invalid assignment format at line {line_num}: {assignment}")
+
+    def _expand_variables(self, value: str, env_vars: Dict[str, str]) -> str:
+        """Safely expand ${VAR} and $VAR references without shell execution"""
+        # Remove inline comments
+        if '#' in value:
+            value = value.split('#')[0].strip()
+        
+        # Remove outer quotes
+        if (value.startswith('"') and value.endswith('"')) or \
+           (value.startswith("'") and value.endswith("'")):
+            value = value[1:-1]
+        
+        # Simple variable expansion for ${VAR} and $VAR patterns
+        # Only expand known variables to prevent injection
+        def replace_var(match):
+            var_name = match.group(1) or match.group(2)
+            return env_vars.get(var_name, '')
+        
+        # Pattern for ${VAR} and $VAR
+        value = re.sub(r'\$\{([A-Z_][A-Z0-9_]*)\}|\$([A-Z_][A-Z0-9_]*)', replace_var, value)
+        
+        return value
+
     def load_config(self) -> None:
         """Load configuration from file"""
         if not os.path.isfile(self.config_file):
@@ -113,15 +215,12 @@ class CertSpreader:
             sys.exit(ExitCodes.CONFIG)
         
         # Parse configuration file
-        config_vars = {}
         arrays = {}
         
         try:
+            # First, extract bash arrays by parsing the file directly
             with open(self.config_file, 'r') as f:
                 content = f.read()
-            
-            # First, extract bash arrays by parsing the file directly
-            import re
             
             # Look for array declarations like HOST_SERVICES=(...) 
             for match in re.finditer(r'(\w+)=\(\s*(.*?)\s*\)', content, re.DOTALL):
@@ -135,42 +234,11 @@ class CertSpreader:
                 
                 arrays[array_name] = elements
             
-            # Execute the bash config file to extract scalar variables
-            bash_script = f'''
-            source {self.config_file}
-            # Export all variables
-            echo "DOMAIN=${{DOMAIN:-}}"
-            echo "CERT_DIR=${{CERT_DIR:-}}"
-            echo "SSH_OPTS=${{SSH_OPTS:-}}"
-            echo "LOG_FILE=${{LOG_FILE:-}}"
-            echo "HOSTS=${{HOSTS:-}}"
-            echo "PROXMOX_USER=${{PROXMOX_USER:-}}"
-            echo "PROXMOX_TOKEN=${{PROXMOX_TOKEN:-}}"
-            echo "PROXMOX_VERIFY_SSL=${{PROXMOX_VERIFY_SSL:-false}}"
-            echo "PKCS12_ENABLED=${{PKCS12_ENABLED:-false}}"
-            echo "PKCS12_PASSWORD=${{PKCS12_PASSWORD:-}}"
-            echo "PKCS12_FILENAME=${{PKCS12_FILENAME:-certificate.pfx}}"
-            echo "CONCATENATED_ENABLED=${{CONCATENATED_ENABLED:-false}}"
-            echo "CONCATENATED_DHPARAM_FILE=${{CONCATENATED_DHPARAM_FILE:-}}"
-            echo "CONCATENATED_FILENAME=${{CONCATENATED_FILENAME:-combined.pem}}"
-            echo "FILE_PERMISSIONS=${{FILE_PERMISSIONS:-644}}"
-            echo "PRIVKEY_PERMISSIONS=${{PRIVKEY_PERMISSIONS:-600}}"
-            echo "DIRECTORY_PERMISSIONS=${{DIRECTORY_PERMISSIONS:-755}}"
-            echo "FILE_OWNER=${{FILE_OWNER:-root}}"
-            echo "FILE_GROUP=${{FILE_GROUP:-root}}"
-            '''
-            
-            result = subprocess.run(['bash', '-c', bash_script], 
-                                  capture_output=True, text=True, check=True)
-            
-            # Parse environment variables
-            for line in result.stdout.strip().split('\n'):
-                if '=' in line:
-                    key, value = line.split('=', 1)
-                    config_vars[key] = value
+            # Parse scalar variables using secure method
+            config_vars = self._parse_bash_config(self.config_file)
                     
-        except subprocess.SubprocessError as e:
-            self.log(f"ERROR: Failed to parse configuration file: {e}")
+        except ConfigError as e:
+            self.log(f"ERROR: {e}")
             sys.exit(ExitCodes.CONFIG)
         
         # Map config variables to our Config object
@@ -422,7 +490,7 @@ class CertSpreader:
         }
         return defaults.get(cert_type, f"certificate.{cert_type}")
     
-    def _generate_pkcs12_certificate(self, filename: str, password: str = None) -> None:
+    def _generate_pkcs12_certificate(self, filename: str, password: Optional[str] = None) -> None:
         """Generate PKCS12/PFX certificate"""
         self.log(f"Generating PKCS12 certificate: {filename}")
         cert_path = os.path.join(self.config.cert_dir, filename)
@@ -593,7 +661,7 @@ class CertSpreader:
         except IOError as e:
             self.log(f"ERROR: Failed to generate CA bundle certificate {filename}: {e}")
     
-    def _generate_jks_certificate(self, filename: str, password: str = None) -> None:
+    def _generate_jks_certificate(self, filename: str, password: Optional[str] = None) -> None:
         """Generate JKS (Java KeyStore) certificate via PKCS#12 intermediate"""
         self.log(f"Generating JKS certificate: {filename}")
         
