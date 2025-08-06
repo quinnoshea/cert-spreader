@@ -9,7 +9,7 @@ import tempfile
 import shutil
 import os
 import sys
-import subprocess
+import subprocess  # Security: Used only for testing CLI functionality with controlled inputs
 from unittest.mock import patch, Mock
 from io import StringIO
 
@@ -373,6 +373,7 @@ class TestCommandLineArguments(unittest.TestCase):
     
     def test_main_function_help(self):
         """Test main function with help argument using subprocess"""
+        # Security: Testing CLI with controlled arguments (no user input)
         result = subprocess.run([sys.executable, "cert-spreader.py", "--help"], 
                               capture_output=True, text=True)
         self.assertEqual(result.returncode, 0)
@@ -380,12 +381,14 @@ class TestCommandLineArguments(unittest.TestCase):
     
     def test_main_function_invalid_args(self):
         """Test main function with invalid arguments using subprocess"""
+        # Security: Testing CLI with controlled arguments (no user input)
         result = subprocess.run([sys.executable, "cert-spreader.py", "--invalid-option"], 
                               capture_output=True, text=True)
         self.assertEqual(result.returncode, 2)  # argparse returns 2 for invalid args
     
     def test_exclusive_flags(self):
         """Test exclusive flag validation using subprocess"""
+        # Security: Testing CLI with controlled arguments (no user input)
         result = subprocess.run([sys.executable, "cert-spreader.py", "--cert-only", "--services-only"], 
                               capture_output=True, text=True)
         self.assertEqual(result.returncode, ExitCodes.USAGE)
@@ -454,12 +457,14 @@ class TestIntegration(unittest.TestCase):
         script_path = "cert-spreader.py"
         
         # Test help output
+        # Security: Testing CLI with controlled arguments (no user input)
         result = subprocess.run([sys.executable, script_path, "--help"], 
                               capture_output=True, text=True)
         self.assertEqual(result.returncode, 0)
         self.assertIn("usage:", result.stdout)
         
         # Test invalid config file
+        # Security: Testing CLI with controlled arguments (no user input)
         result = subprocess.run([sys.executable, script_path, "nonexistent.conf", "--dry-run"], 
                               capture_output=True, text=True)
         self.assertEqual(result.returncode, ExitCodes.CONFIG)

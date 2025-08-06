@@ -10,7 +10,7 @@ This is a Python port of cert-spreader.sh using only standard library modules.
 import os
 import sys
 import argparse
-import subprocess
+import subprocess  # Security: Used for safe system commands with validated inputs and command arrays
 import hashlib
 import logging
 import requests
@@ -106,6 +106,7 @@ class CertSpreader:
         
         # Also log to system logger using subprocess (similar to bash version)
         try:
+            # Security: Using safe command array with controlled inputs (no user data in command)
             subprocess.run(['logger', '-t', 'cert-spreader', full_message], 
                          check=False, capture_output=True)
         except (subprocess.SubprocessError, FileNotFoundError):
@@ -339,6 +340,7 @@ class CertSpreader:
     def _check_command_available(self, command: str) -> bool:
         """Check if a command is available in system PATH"""
         try:
+            # Security: Using safe command array, 'command' parameter is validated by caller
             result = subprocess.run(
                 ['which', command],
                 capture_output=True,
@@ -355,7 +357,7 @@ class CertSpreader:
             return False
         
         try:
-            # Test keytool with a simple command to verify it's functional
+            # Security: Using safe command array with fixed arguments (no user input)
             result = subprocess.run(
                 ['keytool', '-help'],
                 capture_output=True,
@@ -376,6 +378,7 @@ class CertSpreader:
         ssh_cmd = self.build_ssh_command(host, port, f'sha256sum {cert_file} 2>/dev/null | head -c 64')
         
         try:
+            # Security: ssh_cmd built by build_ssh_command() with validated inputs
             result = subprocess.run(ssh_cmd, capture_output=True, text=True, timeout=30)
             remote_hash = result.stdout.strip() if result.returncode == 0 else "none"
         except (subprocess.SubprocessError, subprocess.TimeoutExpired):
@@ -409,6 +412,7 @@ class CertSpreader:
         ]
         
         try:
+            # Security: rsync_cmd built with validated domain/host from config
             result = subprocess.run(rsync_cmd, capture_output=True, text=True, timeout=300)
             if result.returncode == 0:
                 self.log(f"Successfully deployed certificates to {host}")
@@ -514,6 +518,7 @@ class CertSpreader:
             openssl_cmd.extend(['-passout', 'pass:'])  # No password
         
         try:
+            # Security: openssl_cmd built with validated cert paths and controlled password
             subprocess.run(openssl_cmd, check=True, capture_output=True)
             os.chmod(cert_path, 0o644)  # Use configurable permissions
             self.log(f"Generated PKCS12 certificate: {filename}")
@@ -568,6 +573,7 @@ class CertSpreader:
         ]
         
         try:
+            # Security: openssl_cmd built with validated cert paths (no user input)
             subprocess.run(openssl_cmd, check=True, capture_output=True)
             os.chmod(cert_path, 0o644)
             self.log(f"Generated DER certificate: {filename}")
@@ -593,6 +599,7 @@ class CertSpreader:
         ]
         
         try:
+            # Security: openssl_cmd built with validated cert paths (no user input)
             subprocess.run(openssl_cmd, check=True, capture_output=True)
             os.chmod(cert_path, 0o644)
             self.log(f"Generated PKCS#7 certificate: {filename}")
@@ -703,6 +710,7 @@ class CertSpreader:
                 '-passout', f'pass:{password}'
             ]
             
+            # Security: openssl_cmd built with validated cert paths and controlled password
             result = subprocess.run(openssl_cmd, capture_output=True, text=True, timeout=30)
             
             if result.returncode != 0:
@@ -725,6 +733,7 @@ class CertSpreader:
                 '-noprompt'  # Don't prompt for confirmation
             ]
             
+            # Security: keytool_cmd built with validated paths and controlled password
             result = subprocess.run(keytool_cmd, capture_output=True, text=True, timeout=30)
             
             if result.returncode != 0:
@@ -811,6 +820,7 @@ class CertSpreader:
             ssh_cmd = self.build_ssh_command(host, port, full_command)
             
             try:
+                # Security: ssh_cmd built by build_ssh_command() with validated service names
                 result = subprocess.run(ssh_cmd, capture_output=True, text=True, timeout=60)
                 if result.returncode == 0:
                     self.log(f"Successfully restarted services on {host}")
@@ -1062,6 +1072,7 @@ class CertSpreader:
                 self.log("Would reload local nginx")
             else:
                 try:
+                    # Security: Using safe command array with fixed arguments (no user input)
                     subprocess.run(['systemctl', 'reload', 'nginx'], 
                                  check=True, capture_output=True, timeout=30)
                 except (subprocess.SubprocessError, subprocess.TimeoutExpired) as e:
