@@ -673,7 +673,7 @@ class CertSpreader:
         
         # Check keytool availability first
         if not self._check_keytool_available():
-            self.log(f"ERROR: JKS generation requires Java keytool (install Java JDK/JRE)")
+            self.log("ERROR: JKS generation requires Java keytool (install Java JDK/JRE)")
             self.log(f"Alternative: Generate PKCS#12 with 'pkcs12:{password}:{filename.replace('.jks', '.pfx')}' and convert manually")
             self.log(f"Conversion command: keytool -importkeystore -srckeystore {filename.replace('.jks', '.pfx')} -srcstoretype PKCS12 -destkeystore {filename} -deststoretype JKS")
             return
@@ -690,7 +690,7 @@ class CertSpreader:
         
         try:
             # Step 1: Generate PKCS#12 intermediate using existing method
-            self.log(f"Creating intermediate PKCS#12 for JKS conversion")
+            self.log("Creating intermediate PKCS#12 for JKS conversion")
             
             # Build OpenSSL command for PKCS#12 generation
             openssl_cmd = [
@@ -710,7 +710,7 @@ class CertSpreader:
                 return
             
             # Step 2: Convert PKCS#12 to JKS using keytool
-            self.log(f"Converting PKCS#12 to JKS format")
+            self.log("Converting PKCS#12 to JKS format")
             
             keytool_cmd = [
                 'keytool', '-importkeystore',
