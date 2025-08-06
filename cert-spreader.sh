@@ -224,6 +224,10 @@ load_config() {
     FILE_OWNER="${FILE_OWNER:-root}"                     # Default file owner
     FILE_GROUP="${FILE_GROUP:-root}"                     # Default file group
     
+    # Local service configuration (new configurable service management)
+    LOCAL_SERVICE="${LOCAL_SERVICE:-}"                   # Local service to manage (empty = skip)
+    LOCAL_SERVICE_MANAGER="${LOCAL_SERVICE_MANAGER:-systemctl}" # Service manager command
+    
     # ENHANCED CONFIGURATION VALIDATION
     validate_config
 }
@@ -1263,20 +1267,28 @@ main() {
         # Ensure all certificate files have proper security permissions
         secure_cert_permissions
         
-        # RELOAD LOCAL NGINX:
-        # Only reload nginx if certificates have changed
-        if [[ "$LOCAL_CERT_CHANGED" == true ]]; then
-            log "Reloading local nginx"
-            if [[ "$DRY_RUN" == true ]]; then
-                log "Would reload local nginx"
+        # RELOAD/RESTART LOCAL SERVICE:
+        # Only manage local service if certificates have changed and service is configured
+        if [[ -n "$LOCAL_SERVICE" ]]; then
+            if [[ "$LOCAL_CERT_CHANGED" == true ]]; then
+                log "Managing local service: $LOCAL_SERVICE"
+                if [[ "$DRY_RUN" == true ]]; then
+                    log "Would manage local service $LOCAL_SERVICE using $LOCAL_SERVICE_MANAGER"
+                else
+                    # Try reload first, fallback to restart (same pattern as remote services)
+                    if ${LOCAL_SERVICE_MANAGER:-systemctl} reload "$LOCAL_SERVICE" 2>&1 | logger -t cert-spreader; then
+                        log "Successfully reloaded local service: $LOCAL_SERVICE"
+                    else
+                        log "Reload failed, attempting restart for: $LOCAL_SERVICE"
+                        ${LOCAL_SERVICE_MANAGER:-systemctl} restart "$LOCAL_SERVICE" 2>&1 | logger -t cert-spreader
+                        log "Successfully restarted local service: $LOCAL_SERVICE"
+                    fi
+                fi
             else
-                # SYSTEMCTL: System service control command
-                # reload is gentler than restart - reloads config without dropping connections
-                # 2>&1 | logger redirects output to system log
-                systemctl reload nginx 2>&1 | logger -t cert-spreader
+                log "Skipping local service management (certificates unchanged)"
             fi
         else
-            log "Skipping local nginx reload (certificates unchanged)"
+            log "No local service configured, skipping local service management"
         fi
         
         

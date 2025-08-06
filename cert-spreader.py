@@ -65,6 +65,9 @@ class Config:
     directory_permissions: str = "755"   # Directory permissions
     file_owner: str = "root"             # Default file owner
     file_group: str = "root"             # Default file group
+    # Local service configuration
+    local_service: str = ""              # Local service to manage (empty = skip)
+    local_service_manager: str = "systemctl"  # Service manager command
 
 
 class CertSpreader:
@@ -137,7 +140,9 @@ class CertSpreader:
             'PRIVKEY_PERMISSIONS': '600',
             'DIRECTORY_PERMISSIONS': '755',
             'FILE_OWNER': 'root',
-            'FILE_GROUP': 'root'
+            'FILE_GROUP': 'root',
+            'LOCAL_SERVICE': '',
+            'LOCAL_SERVICE_MANAGER': 'systemctl'
         }
         
         try:
@@ -286,6 +291,10 @@ class CertSpreader:
         self.config.directory_permissions = config_vars.get('DIRECTORY_PERMISSIONS', '755')
         self.config.file_owner = config_vars.get('FILE_OWNER', 'root')
         self.config.file_group = config_vars.get('FILE_GROUP', 'root')
+        
+        # Parse local service configuration
+        self.config.local_service = config_vars.get('LOCAL_SERVICE', '')
+        self.config.local_service_manager = config_vars.get('LOCAL_SERVICE_MANAGER', 'systemctl')
         
         # Parse arrays from extracted bash arrays
         self.config.host_services = arrays.get('HOST_SERVICES', [])
@@ -1105,21 +1114,36 @@ class CertSpreader:
         return changes_needed
     
     
-    def reload_local_nginx(self) -> None:
-        """Reload local nginx if certificates changed"""
+    def reload_local_service(self) -> None:
+        """Reload/restart local service if certificates changed"""
+        # Skip if no local service configured
+        if not self.config.local_service:
+            self.log("No local service configured, skipping local service management")
+            return
+        
         if self.local_cert_changed:
-            self.log("Reloading local nginx")
+            self.log(f"Managing local service: {self.config.local_service}")
             if self.dry_run:
-                self.log("Would reload local nginx")
+                self.log(f"Would manage local service {self.config.local_service} using {self.config.local_service_manager}")
             else:
+                # Try reload first, fallback to restart (same pattern as remote services)
+                reload_cmd = [self.config.local_service_manager, 'reload', self.config.local_service]
+                restart_cmd = [self.config.local_service_manager, 'restart', self.config.local_service]
+                
                 try:
-                    # Security: Using safe command array with fixed arguments (no user input)
-                    subprocess.run(['systemctl', 'reload', 'nginx'], 
-                                 check=True, capture_output=True, timeout=30)
+                    # Security: Using validated service manager and service name from config
+                    result = subprocess.run(reload_cmd, check=False, capture_output=True, timeout=30)
+                    if result.returncode == 0:
+                        self.log(f"Successfully reloaded local service: {self.config.local_service}")
+                    else:
+                        self.log(f"Reload failed, attempting restart for: {self.config.local_service}")
+                        result = subprocess.run(restart_cmd, check=True, capture_output=True, timeout=30)
+                        self.log(f"Successfully restarted local service: {self.config.local_service}")
+                        
                 except (subprocess.SubprocessError, subprocess.TimeoutExpired) as e:
-                    self.log(f"WARNING: Failed to reload nginx: {e}")
+                    self.log(f"WARNING: Failed to manage local service {self.config.local_service}: {e}")
         else:
-            self.log("Skipping local nginx reload (certificates unchanged)")
+            self.log("Skipping local service management (certificates unchanged)")
     
     def run(self) -> None:
         """Main execution logic"""
@@ -1146,8 +1170,8 @@ class CertSpreader:
             # Secure permissions
             self.secure_cert_permissions()
             
-            # Reload local nginx
-            self.reload_local_nginx()
+            # Reload/restart local service
+            self.reload_local_service()
             
             
             # Deploy certificates to remote hosts

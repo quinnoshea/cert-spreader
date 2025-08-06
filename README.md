@@ -189,6 +189,20 @@ FILE_OWNER=root                   # File owner
 FILE_GROUP=ssl-cert              # File group
 ```
 
+### Local Service Configuration
+
+```bash
+# Configure local service management (replaces hardcoded nginx)
+LOCAL_SERVICE="nginx"             # Service to reload/restart (empty = skip)
+LOCAL_SERVICE_MANAGER="systemctl" # Service manager (systemctl, service, rc-service, etc.)
+
+# Examples for different service managers:
+# LOCAL_SERVICE="apache2" LOCAL_SERVICE_MANAGER="systemctl"    # Ubuntu/Debian systemd
+# LOCAL_SERVICE="httpd" LOCAL_SERVICE_MANAGER="service"       # RHEL/CentOS SysV init  
+# LOCAL_SERVICE="nginx" LOCAL_SERVICE_MANAGER="rc-service"    # Alpine/OpenRC
+# LOCAL_SERVICE=""                                            # Disable local service management
+```
+
 ### Proxmox Integration
 
 ```bash
