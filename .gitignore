@@ -89,6 +89,8 @@ python/
 __pycache__
 todo.txt
 README_new.md
+.plan
+
 # === COVERAGE FILES ===
 .coverage                   # Coverage data file
 coverage.xml                # Coverage XML report
