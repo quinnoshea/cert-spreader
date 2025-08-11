@@ -100,3 +100,6 @@ htmlcov/                    # Coverage HTML report directory
 # Additional coverage ignore (at end to ensure precedence)
 .coverage
 coverage.xml
+
+# Claude
+CLAUDE.md
