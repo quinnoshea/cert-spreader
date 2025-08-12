@@ -280,10 +280,12 @@ validate_config() {
     fi
 
     # Validate Proxmox configuration if enabled
-    if [[ -n "${PROXMOX_USER:-}" && -n "${PROXMOX_TOKEN:-}" ]]; then
-        if [[ ! "$PROXMOX_USER" =~ ^[^!]+![^!]+$ ]]; then
-            echo "ERROR: PROXMOX_USER must be in 'user@realm!tokenid' format" >&2
-            validation_errors=$((validation_errors + 1))
+    if [[ -n "${PROXMOX_USER:-}" ]]; then
+        if [[ -n "${PROXMOX_TOKEN:-}" ]]; then
+            if [[ ! "$PROXMOX_USER" =~ ^[^!]+![^!]+$ ]]; then
+                echo "ERROR: PROXMOX_USER must be in 'user@realm!tokenid' format" >&2
+                validation_errors=$((validation_errors + 1))
+            fi
         fi
     fi
 
@@ -473,10 +475,22 @@ parse_host_service_entry() {
 
     # Detect format by checking if third part looks like service manager
     if [[ ${#parts[@]} -eq 4 ]]; then
-        if [[ -n "${parts[2]}" ]] && [[ ! "${parts[2]}" =~ , ]] && [[ -n "${parts[3]}" ]]; then
-            # Enhanced format: hostname:port:service_manager:services
-            local service_manager="${parts[2]}"
-            local services="${parts[3]}"
+        if [[ -n "${parts[2]}" ]]; then
+            if [[ ! "${parts[2]}" =~ , ]]; then
+                if [[ -n "${parts[3]}" ]]; then
+                    # Enhanced format: hostname:port:service_manager:services
+                    local service_manager="${parts[2]}"
+                    local services="${parts[3]}"
+                else
+                    # Legacy format: hostname:port:services
+                    local service_manager="${SERVICE_MANAGER:-systemctl}"
+                    local services="${parts[2]}"
+                fi
+            else
+                # Legacy format: hostname:port:services
+                local service_manager="${SERVICE_MANAGER:-systemctl}"
+                local services="${parts[2]}"
+            fi
         else
             # Legacy format: hostname:port:services
             local service_manager="${SERVICE_MANAGER:-systemctl}"
@@ -825,10 +839,12 @@ generate_concatenated_certificate() {
     local cert_path="$CERT_DIR/$filename"
 
     # Check if certificate needs to be regenerated
-    if [[ -n "$dhparam_file" && -f "$dhparam_file" ]]; then
-        if ! check_certificate_needs_generation "$cert_path" "$CERT_DIR/privkey.pem" "$CERT_DIR/fullchain.pem" "$dhparam_file"; then
-            log "Concatenated certificate up to date: $filename"
-            return
+    if [[ -n "$dhparam_file" ]]; then
+        if [[ -f "$dhparam_file" ]]; then
+            if ! check_certificate_needs_generation "$cert_path" "$CERT_DIR/privkey.pem" "$CERT_DIR/fullchain.pem" "$dhparam_file"; then
+                log "Concatenated certificate up to date: $filename"
+                return
+            fi
         fi
     else
         if ! check_certificate_needs_generation "$cert_path" "$CERT_DIR/privkey.pem" "$CERT_DIR/fullchain.pem"; then
@@ -848,9 +864,11 @@ generate_concatenated_certificate() {
     # Create concatenated certificate
     if cat "$CERT_DIR/privkey.pem" "$CERT_DIR/fullchain.pem" > "$cert_path"; then
         # Add DH parameters if file exists
-        if [[ -n "$dhparam_file" && -f "$dhparam_file" ]]; then
-            cat "$dhparam_file" >> "$cert_path"
-            log "Added DH parameters from: $dhparam_file"
+        if [[ -n "$dhparam_file" ]]; then
+            if [[ -f "$dhparam_file" ]]; then
+                cat "$dhparam_file" >> "$cert_path"
+                log "Added DH parameters from: $dhparam_file"
+            fi
         fi
 
         chmod "$FILE_PERMISSIONS" "$cert_path"
@@ -1112,7 +1130,11 @@ check_permissions() {
 
     # COMPOUND BOOLEAN CHECK:
     # Return true (0) if both permissions and ownership match expected values
-    [[ "$current_perms" == "$expected_perms" && "$current_owner" == "$expected_owner" ]]
+    if [[ "$current_perms" == "$expected_perms" ]]; then
+        [[ "$current_owner" == "$expected_owner" ]]
+    else
+        return 1
+    fi
 }
 
 # DYNAMIC CERTIFICATE FILE DISCOVERY AND SECURITY FUNCTION:
@@ -1159,7 +1181,9 @@ discover_and_secure_cert_files() {
         local filename=$(basename "$pem_file")
 
         # Skip files we already processed above
-        [[ -n "${cert_file_perms[$filename]:-}" ]] && continue
+        if [[ -n "${cert_file_perms[$filename]:-}" ]]; then
+            continue
+        fi
 
         # Default permissions for discovered .pem files
         local default_perms="$FILE_PERMISSIONS"
@@ -1329,7 +1353,9 @@ main() {
     # CERTIFICATE PROCESSING PHASE:
     # Generate service certificates, secure permissions, and deploy
     # Skip this entire phase in certain modes
-    if [[ "$SERVICES_ONLY" != true && "$PROXMOX_ONLY" != true && "$PERMISSIONS_FIX" != true ]]; then
+    if [[ "$SERVICES_ONLY" != true ]]; then
+        if [[ "$PROXMOX_ONLY" != true ]]; then
+            if [[ "$PERMISSIONS_FIX" != true ]]; then
         # Generate certificates in formats needed by specific services
         generate_service_certificates
 
@@ -1403,6 +1429,8 @@ main() {
             # Log the failures but don't stop the script from completing other tasks
             if [[ "$CERT_ONLY" != true ]]; then
                 log "Continuing with service restarts despite deployment failures"
+            fi
+        fi
             fi
         fi
     fi
