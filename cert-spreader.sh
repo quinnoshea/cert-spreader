@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-echo "Certificate Spreader - Testing Arrays & Parameter Expansion"
+echo "Certificate Spreader - Testing Complex Conditionals & Regex"
 echo "Arguments: $*"
 
 # Basic variables
@@ -16,29 +16,93 @@ HOSTS="server1 server2 server3"
 SSH_OPTS="${SSH_OPTS:--o ConnectTimeout=10}"
 LOG_FILE="${LOG_FILE:-/var/log/cert-spreader.log}"
 
-# Simple function with parameter expansion
+# Function with complex conditionals
+validate_input() {
+    local input="$1"
+
+    # Nested if statements
+    if [[ -n "$input" ]]; then
+        if [[ "$input" =~ ^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]; then
+            echo "Valid domain format: $input"
+            return 0
+        else
+            echo "Invalid domain format: $input"
+            return 1
+        fi
+    else
+        echo "Empty input"
+        return 1
+    fi
+}
+
+# Case statement
+parse_argument() {
+    local arg="$1"
+    case "$arg" in
+        --dry-run)
+            DRY_RUN=true
+            echo "Dry run mode enabled"
+            ;;
+        --help|-h)
+            usage
+            ;;
+        *.conf)
+            CONFIG_FILE="$arg"
+            echo "Config file: $CONFIG_FILE"
+            ;;
+        *)
+            echo "Unknown argument: $arg"
+            return 1
+            ;;
+    esac
+}
+
+# While loop with complex condition
+test_while() {
+    local counter=0
+    while [[ $counter -lt 3 ]]; do
+        echo "Counter: $counter"
+        counter=$((counter + 1))
+    done
+}
+
+# Function with regex and parameter validation
+check_port() {
+    local port="$1"
+    if [[ "$port" =~ ^[0-9]+$ ]]; then
+        if [[ $port -gt 0 ]] && [[ $port -lt 65536 ]]; then
+            echo "Valid port: $port"
+            return 0
+        fi
+    fi
+    echo "Invalid port: $port"
+    return 1
+}
+
 usage() {
     echo "Usage: $0 [options]"
     echo "Config: ${CONFIG_FILE:-config.conf}"
     exit 0
 }
 
-# Function with array usage
-test_array() {
-    local test_array=("item1" "item2" "item3")
-    echo "Array length: ${#test_array[@]}"
-    for item in "${test_array[@]}"; do
-        echo "Item: $item"
-    done
-}
-
-# Simple conditional
+# Test complex conditionals
 if [[ "$1" == "--help" ]] || [[ "$1" == "-h" ]]; then
     usage
 fi
 
-# Test array function
-test_array
+# Test regex validation
+validate_input "example.com"
+validate_input "invalid_domain"
 
-echo "Arrays and parameter expansion test completed"
+# Test case statement
+parse_argument "--dry-run"
+
+# Test while loop
+test_while
+
+# Test port validation
+check_port "22"
+check_port "invalid"
+
+echo "Complex conditionals and regex test completed"
 exit 0
