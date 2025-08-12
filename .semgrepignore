@@ -1,0 +1,5 @@
+# Semgrep ignore file
+# This file excludes files/patterns from semgrep analysis
+
+# Exclude files that have parsing issues with older semgrep versions
+cert-spreader.sh

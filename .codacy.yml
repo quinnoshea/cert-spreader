@@ -1,0 +1,10 @@
+---
+engines:
+  semgrep:
+    enabled: true
+    exclude_paths:
+      - "cert-spreader.sh"
+exclude_paths:
+  - ".git/**"
+  - "**/*.example.*"
+  - "**/test-*"

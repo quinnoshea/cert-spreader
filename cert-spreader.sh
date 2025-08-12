@@ -476,7 +476,7 @@ parse_host_service_entry() {
     # Detect format by checking if third part looks like service manager
     if [[ ${#parts[@]} -eq 4 ]]; then
         if [[ -n "${parts[2]}" ]]; then
-            if [[ ! "${parts[2]}" =~ , ]]; then
+            if [[ "${parts[2]}" != *","* ]]; then
                 if [[ -n "${parts[3]}" ]]; then
                     # Enhanced format: hostname:port:service_manager:services
                     local service_manager="${parts[2]}"
