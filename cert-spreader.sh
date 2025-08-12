@@ -10,7 +10,7 @@ set -euo pipefail
 
 # STARTUP INFO: Show what arguments were passed to the script
 # $@ represents all command line arguments passed to the script
-echo "Starting cert-spreader with arguments: $@"
+echo "Starting cert-spreader with arguments: $*"
 
 # SCRIPT DESCRIPTION:
 # Certificate Spreader - Simplified Version with Configuration File
@@ -92,12 +92,12 @@ EOF
 # - $@ is all arguments as separate words
 # - while loops and case statements for processing options
 parse_args() {
-    
+
     # WHILE LOOP: Continue processing while there are arguments left
     # [[ $# -gt 0 ]] means "while number of arguments is greater than 0"
     # [[ ]] is bash's improved test command (better than [ ])
     while [[ $# -gt 0 ]]; do
-        
+
         # CASE STATEMENT: Like switch/case in other languages
         # Each pattern is checked against $1 (current argument)
         case $1 in
@@ -152,22 +152,30 @@ parse_args() {
                 ;;
         esac
     done  # End of while loop
-    
+
     # FLAG VALIDATION:
     # Ensure only one exclusive flag is set at a time
     # 'local' creates a variable that only exists within this function
     local exclusive_flags=0
-    
+
     # PARAMETER EXPANSION: ${CERT_ONLY:-unset}
     # This means: use value of CERT_ONLY, or "unset" if CERT_ONLY is empty/unset
-    
-    # LOGICAL AND (&&): If first condition is true, execute second command
+
+    # Count exclusive flags using if statements instead of && chains
     # ARITHMETIC EXPANSION: $((expression)) performs arithmetic
-    [[ "$CERT_ONLY" == true ]] && exclusive_flags=$((exclusive_flags + 1))
-    [[ "$SERVICES_ONLY" == true ]] && exclusive_flags=$((exclusive_flags + 1))
-    [[ "$PROXMOX_ONLY" == true ]] && exclusive_flags=$((exclusive_flags + 1))
-    [[ "$PERMISSIONS_FIX" == true ]] && exclusive_flags=$((exclusive_flags + 1))
-    
+    if [[ "$CERT_ONLY" == true ]]; then
+        exclusive_flags=$((exclusive_flags + 1))
+    fi
+    if [[ "$SERVICES_ONLY" == true ]]; then
+        exclusive_flags=$((exclusive_flags + 1))
+    fi
+    if [[ "$PROXMOX_ONLY" == true ]]; then
+        exclusive_flags=$((exclusive_flags + 1))
+    fi
+    if [[ "$PERMISSIONS_FIX" == true ]]; then
+        exclusive_flags=$((exclusive_flags + 1))
+    fi
+
     # Check if more than one exclusive flag was set
     if [[ $exclusive_flags -gt 1 ]]; then
         echo "ERROR: Only one of --cert-only, --services-only, --proxmox-only, or --permissions-fix can be used at a time" >&2
@@ -186,16 +194,16 @@ load_config() {
         echo "Copy config.example.conf to $CONFIG_FILE and customize it" >&2
         exit $ERR_CONFIG
     fi
-    
+
     # SOURCE COMMAND: 'source' executes another script in the current shell context
     # This allows the config file to set variables that we can use here
     # Alternative syntax: . "$CONFIG_FILE" (dot command does the same thing)
     source "$CONFIG_FILE"
-    
+
     # VARIABLE VALIDATION:
     # Create an array of required variable names
     local required_vars=(DOMAIN CERT_DIR HOSTS)
-    
+
     # ARRAY ITERATION: "${array[@]}" expands to all array elements
     for var in "${required_vars[@]}"; do
         # INDIRECT VARIABLE REFERENCE: ${!var} gets the value of the variable named in $var
@@ -207,7 +215,7 @@ load_config() {
             exit $ERR_CONFIG
         fi
     done
-    
+
     # SET DEFAULT VALUES:
     # Parameter expansion with default values: ${VAR:-default}
     # If VAR is unset or empty, use the default value after :-
@@ -215,7 +223,7 @@ load_config() {
     LOG_FILE="${LOG_FILE:-/var/log/cert-spreader.log}"
     PLEX_CERT_ENABLED="${PLEX_CERT_ENABLED:-false}"
     ZNC_CERT_ENABLED="${ZNC_CERT_ENABLED:-false}"
-    
+
     # FILE PERMISSION DEFAULTS:
     # These can be overridden in the configuration file
     FILE_PERMISSIONS="${FILE_PERMISSIONS:-644}"          # Default permissions for certificate files
@@ -223,14 +231,14 @@ load_config() {
     DIRECTORY_PERMISSIONS="${DIRECTORY_PERMISSIONS:-755}" # Directory permissions
     FILE_OWNER="${FILE_OWNER:-root}"                     # Default file owner
     FILE_GROUP="${FILE_GROUP:-root}"                     # Default file group
-    
+
     # Local service configuration (new configurable service management)
     LOCAL_SERVICE="${LOCAL_SERVICE:-}"                   # Local service to manage (empty = skip)
     LOCAL_SERVICE_MANAGER="${LOCAL_SERVICE_MANAGER:-systemctl}" # Service manager command
-    
+
     # Remote service configuration (new configurable service management)
     SERVICE_MANAGER="${SERVICE_MANAGER:-systemctl}"      # Default service manager for remote hosts
-    
+
     # ENHANCED CONFIGURATION VALIDATION
     validate_config
 }
@@ -239,7 +247,7 @@ load_config() {
 # This function performs deeper validation of configuration values
 validate_config() {
     local validation_errors=0
-    
+
     # Validate certificate directory exists and is readable
     if [[ ! -d "$CERT_DIR" ]]; then
         echo "ERROR: Certificate directory does not exist: $CERT_DIR" >&2
@@ -248,18 +256,18 @@ validate_config() {
         echo "ERROR: Certificate directory is not readable: $CERT_DIR" >&2
         validation_errors=$((validation_errors + 1))
     fi
-    
+
     # Validate domain format (basic check)
     if [[ ! "$DOMAIN" =~ ^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]; then
         echo "WARNING: DOMAIN format may be invalid: $DOMAIN" >&2
     fi
-    
+
     # Validate HOSTS is not empty
     if [[ -z "$HOSTS" ]]; then
         echo "ERROR: HOSTS variable is empty - no hosts to deploy to" >&2
         validation_errors=$((validation_errors + 1))
     fi
-    
+
     # Validate HOST_SERVICES array format if it exists
     if [[ ${#HOST_SERVICES[@]} -gt 0 ]]; then
         for host_config in "${HOST_SERVICES[@]}"; do
@@ -270,7 +278,7 @@ validate_config() {
             fi
         done
     fi
-    
+
     # Validate Proxmox configuration if enabled
     if [[ -n "${PROXMOX_USER:-}" && -n "${PROXMOX_TOKEN:-}" ]]; then
         if [[ ! "$PROXMOX_USER" =~ ^[^!]+![^!]+$ ]]; then
@@ -278,7 +286,7 @@ validate_config() {
             validation_errors=$((validation_errors + 1))
         fi
     fi
-    
+
     # Exit if any validation errors were found
     if [[ $validation_errors -gt 0 ]]; then
         echo "Configuration validation failed with $validation_errors error(s)" >&2
@@ -292,11 +300,11 @@ validate_config() {
 log() {
     # FUNCTION PARAMETERS: $1 is the first parameter passed to the function
     local msg="$1"
-    
+
     # COMMAND SUBSTITUTION: $(command) runs command and captures its output
     # The 'date' command formats current date/time according to the format string
     local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
-    
+
     # CONDITIONAL BRANCHING: Different behavior based on DRY_RUN flag
     if [[ "$DRY_RUN" == true ]]; then
         # PIPE (|): Sends output of first command as input to second command
@@ -314,7 +322,7 @@ log() {
 # Check if required external commands are available
 check_command_available() {
     local command="$1"
-    
+
     if command -v "$command" >/dev/null 2>&1; then
         return 0
     else
@@ -326,7 +334,7 @@ check_keytool_available() {
     if ! check_command_available "keytool"; then
         return 1
     fi
-    
+
     # Test keytool functionality with a simple command
     if keytool -help >/dev/null 2>&1; then
         return 0
@@ -342,21 +350,21 @@ build_ssh_command() {
     local host="$1"           # Hostname (without domain)
     local port="${2:-22}"     # SSH port with default
     local command="${3:-}"    # Optional command to execute
-    
+
     # Start with base SSH command and options
     local ssh_cmd="ssh $SSH_OPTS"
-    
+
     # Add custom port if not default
     if [[ "$port" != "22" ]]; then
         ssh_cmd="$ssh_cmd -p $port"
     fi
-    
+
     # Add host and command
     ssh_cmd="$ssh_cmd root@$host.$DOMAIN"
     if [[ -n "$command" ]]; then
         ssh_cmd="$ssh_cmd '$command'"
     fi
-    
+
     echo "$ssh_cmd"
 }
 
@@ -366,22 +374,22 @@ build_ssh_command() {
 # Demonstrates parameter defaults, command substitution, and hash comparison
 cert_changed() {
     local host="$1"  # First parameter: hostname
-    
+
     # PARAMETER DEFAULT: ${2:-22} means "use $2, or 22 if $2 is empty/unset"
     local port="${2:-22}"  # Second parameter with default value
-    
+
     # CALCULATE LOCAL HASH:
     # sha256sum generates SHA-256 hash of file
     # head -c 64 extracts first 64 characters (the hash)
     local local_hash=$(sha256sum "$CERT_DIR/fullchain.pem" | head -c 64)
-    
+
     # CALCULATE REMOTE HASH:
     # Use our SSH command builder and run sha256sum on remote host
     # 2>/dev/null suppresses error messages
     # || echo "none" provides fallback if command fails
     local ssh_cmd=$(build_ssh_command "$host" "$port" "sha256sum $CERT_DIR/fullchain.pem 2>/dev/null | head -c 64")
     local remote_hash=$(eval "$ssh_cmd" || echo "none")
-    
+
     # COMPARISON: Return true (0) if hashes are different, false (1) if same
     # This is the return value of the function - bash functions return the exit code of last command
     [[ "$local_hash" != "$remote_hash" ]]
@@ -393,26 +401,26 @@ cert_changed() {
 deploy_to_host() {
     local host="$1"           # Target hostname
     local port="${2:-22}"     # SSH port with default
-    
+
     # BUILD RSYNC SSH COMMAND:
     # rsync uses SSH for secure file transfer
     # -e flag specifies the remote shell command to use
     local rsync_ssh="ssh $SSH_OPTS"
-    
+
     # Add custom port if not default
     if [[ "$port" != "22" ]]; then
         rsync_ssh="$rsync_ssh -p $port"
     fi
-    
+
     # IDEMPOTENCY CHECK: Only deploy if certificate has changed
     # ! negates the return value (if cert_changed returns true, this becomes false)
     if ! cert_changed "$host" "$port"; then
         log "Skipping $host (certificate unchanged)"
         return 0  # Return success (0) - nothing to do
     fi
-    
+
     log "Deploying certificates to $host"
-    
+
     # DRY RUN MODE: Show what would be done without doing it
     if [[ "$DRY_RUN" == true ]]; then
         log "Would deploy certificates to $host using: rsync -aL -e '$rsync_ssh' '$CERT_DIR/' 'root@$host.$DOMAIN:$CERT_DIR/'"
@@ -420,7 +428,7 @@ deploy_to_host() {
         DEPLOYED_HOSTS+=("$host")
         return 0
     fi
-    
+
     # ACTUAL DEPLOYMENT:
     # rsync flags: -a (archive mode), -L (follow symlinks)
     # Format: rsync source/ destination/
@@ -429,7 +437,7 @@ deploy_to_host() {
         log "ERROR: Failed to deploy certificates to $host"
         return $ERR_NETWORK  # Return network error code
     fi
-    
+
     log "Successfully deployed certificates to $host"
     # Track this host as having certificates deployed
     DEPLOYED_HOSTS+=("$host")
@@ -438,48 +446,54 @@ deploy_to_host() {
 
 # PARSE HOST SERVICE ENTRY FUNCTION:
 # Parse HOST_SERVICES entry supporting both legacy and enhanced formats
-# Legacy format: "hostname:port:service1,service2,service3"  
+# Legacy format: "hostname:port:service1,service2,service3"
 # Enhanced format: "hostname:port:service_manager:service1,service2,service3"
 # Returns: host port service_manager services (via global variables)
 parse_host_service_entry() {
     local entry="$1"
     local -a parts
-    
+
     # Split entry by colons, handling up to 4 parts
     IFS=':' read -ra parts <<< "$entry"
-    
+
     # Validate minimum format
     if [[ ${#parts[@]} -lt 3 ]]; then
         echo "ERROR: Invalid HOST_SERVICES format: $entry" >&2
         return 1
     fi
-    
+
     local host="${parts[0]}"
     local port="${parts[1]}"
-    
+
     # Validate port is numeric
     if ! [[ "$port" =~ ^[0-9]+$ ]]; then
         echo "ERROR: Invalid port in HOST_SERVICES: $port" >&2
         return 1
     fi
-    
+
     # Detect format by checking if third part looks like service manager
-    if [[ ${#parts[@]} -eq 4 && -n "${parts[2]}" && ! "${parts[2]}" =~ , && -n "${parts[3]}" ]]; then
-        # Enhanced format: hostname:port:service_manager:services
-        local service_manager="${parts[2]}"
-        local services="${parts[3]}"
+    if [[ ${#parts[@]} -eq 4 ]]; then
+        if [[ -n "${parts[2]}" ]] && [[ ! "${parts[2]}" =~ , ]] && [[ -n "${parts[3]}" ]]; then
+            # Enhanced format: hostname:port:service_manager:services
+            local service_manager="${parts[2]}"
+            local services="${parts[3]}"
+        else
+            # Legacy format: hostname:port:services
+            local service_manager="${SERVICE_MANAGER:-systemctl}"
+            local services="${parts[2]}"
+        fi
     else
         # Legacy format: hostname:port:services
         local service_manager="${SERVICE_MANAGER:-systemctl}"
         local services="${parts[2]}"
     fi
-    
+
     # Return values via global variables (bash best practice for multiple returns)
     PARSED_HOST="$host"
     PARSED_PORT="$port"
     PARSED_SERVICE_MANAGER="$service_manager"
     PARSED_SERVICES="$services"
-    
+
     return 0
 }
 
@@ -488,32 +502,32 @@ parse_host_service_entry() {
 # It demonstrates array processing, string manipulation, and SSH command execution
 restart_services() {
     log "Processing service restarts"
-    
+
     # ARRAY LENGTH CHECK: ${#array[@]} gives the number of elements in array
     if [[ ${#HOST_SERVICES[@]} -eq 0 ]]; then
         log "No HOST_SERVICES configured, skipping service restarts"
         return 0
     fi
-    
+
     # Check if any hosts had certificates deployed
     if [[ ${#DEPLOYED_HOSTS[@]} -eq 0 ]]; then
         log "No certificates were deployed, skipping service restarts"
         return 0
     fi
-    
+
     # ARRAY ITERATION: Process each host configuration
     for host_config in "${HOST_SERVICES[@]}"; do
         # PARSE HOST SERVICE ENTRY: Use enhanced parser supporting both formats
         if ! parse_host_service_entry "$host_config"; then
             continue  # Skip invalid entries (error already logged)
         fi
-        
+
         # Extract parsed values from global variables
         local host="$PARSED_HOST"
         local port="$PARSED_PORT"
         local service_manager="$PARSED_SERVICE_MANAGER"
         local services="$PARSED_SERVICES"
-        
+
         # CHECK IF THIS HOST HAD CERTIFICATES DEPLOYED:
         # Only restart services on hosts where certificates were actually deployed
         local host_deployed=false
@@ -523,40 +537,40 @@ restart_services() {
                 break
             fi
         done
-        
+
         if [[ "$host_deployed" == false ]]; then
             log "Skipping service restart on $host (certificates not deployed)"
             continue
         fi
-        
+
         if [[ "$DRY_RUN" == true ]]; then
             log "Would restart services on $host:$port using $service_manager - $services"
             continue  # Skip to next iteration of loop
         fi
-        
+
         log "Restarting services on $host using $service_manager: $services"
-        
+
         # BUILD SERVICE COMMAND WITH CONFIGURABLE MANAGER AND FALLBACK:
         # Try reload first, then restart if reload fails (same pattern as local service)
         local service_cmd=""
-        
+
         # SPLIT SERVICES: Convert comma-separated services into array
         # -a flag makes service_array an indexed array
         IFS=',' read -ra service_array <<< "$services"
-        
+
         # BUILD COMMAND STRING: Try reload, fallback to restart with configurable manager
         for service in "${service_array[@]}"; do
             service_cmd+="(${service_manager} reload $service || ${service_manager} restart $service) && "
         done
-        
+
         # STRING MANIPULATION: Remove trailing " && "
         # ${variable%% pattern} removes longest match of pattern from end
         service_cmd=${service_cmd%% && }
-        
+
         # EXECUTE REMOTE COMMAND:
         # Use our SSH command builder for consistency
         local ssh_cmd=$(build_ssh_command "$host" "$port" "$service_cmd")
-        
+
         # CONDITIONAL EXECUTION: if command succeeds, then... else...
         if eval "$ssh_cmd"; then
             log "Successfully restarted services on $host"
@@ -576,20 +590,20 @@ update_proxmox() {
         log "Proxmox credentials not configured, skipping Proxmox updates"
         return 0
     fi
-    
+
     if [[ ${#PROXMOX_NODES[@]} -eq 0 ]]; then
         log "No Proxmox nodes configured, skipping Proxmox updates"
         return 0
     fi
-    
+
     log "Updating Proxmox certificates"
-    
+
     # READ CERTIFICATE FILES:
     # cat command reads entire file content
     # $() captures the output in variables
     local privkey=$(cat "$CERT_DIR/privkey.pem")
     local fullchain=$(cat "$CERT_DIR/fullchain.pem")
-    
+
     # REGEX PATTERN MATCHING:
     # =~ is the regex match operator in bash
     # ^([^!]+)!(.+)$ breaks down as:
@@ -607,16 +621,16 @@ update_proxmox() {
         log "ERROR: PROXMOX_USER must be in 'user@realm!tokenid' format"
         return $ERR_CONFIG
     fi
-    
+
     # PROCESS EACH PROXMOX NODE:
     for node in "${PROXMOX_NODES[@]}"; do
         local node_url="https://$node.$DOMAIN:8006"
-        
+
         if [[ "$DRY_RUN" == true ]]; then
             log "Would update Proxmox node $node at $node_url"
             continue
         fi
-        
+
         # CONNECTIVITY CHECK:
         # curl flags: --connect-timeout (connection timeout), -s (silent), -k (ignore SSL errors)
         # >/dev/null 2>&1 redirects both stdout and stderr to null (suppress output)
@@ -624,9 +638,9 @@ update_proxmox() {
             log "$node unreachable, skipping"
             continue
         fi
-        
+
         log "Updating $node certificates"
-        
+
         # PROXMOX API CALL:
         # This is a complex curl command making an HTTP POST to Proxmox API
         # \ at end of lines allows command to continue on next line
@@ -651,19 +665,19 @@ update_proxmox() {
 # Supports PKCS12/PFX and concatenated certificate formats
 generate_service_certificates() {
     log "Generating custom certificates"
-    
+
     # Process array-based custom certificates first
     if [[ ${#CUSTOM_CERTIFICATES[@]} -gt 0 ]]; then
         for cert_config in "${CUSTOM_CERTIFICATES[@]}"; do
             generate_custom_certificate "$cert_config"
         done
     fi
-    
+
     # Process individual configuration settings
     if [[ "${PKCS12_ENABLED:-false}" == true ]]; then
         generate_pkcs12_certificate "${PKCS12_FILENAME:-certificate.pfx}" "${PKCS12_PASSWORD:-}"
     fi
-    
+
     if [[ "${CONCATENATED_ENABLED:-false}" == true ]]; then
         generate_concatenated_certificate "${CONCATENATED_FILENAME:-combined.pem}" "${CONCATENATED_DHPARAM_FILE:-}"
     fi
@@ -673,15 +687,15 @@ generate_service_certificates() {
 # Parses configuration string and generates appropriate certificate
 generate_custom_certificate() {
     local cert_config="$1"
-    
+
     # Parse configuration: "type:param:filename"
     IFS=':' read -r cert_type param filename <<< "$cert_config"
-    
+
     # Set default filename if not provided
     if [[ -z "$filename" ]]; then
         filename=$(get_default_filename "$cert_type")
     fi
-    
+
     case "$cert_type" in
         pkcs12)
             generate_pkcs12_certificate "$filename" "$param"
@@ -718,7 +732,7 @@ generate_custom_certificate() {
 # Returns appropriate default filename for certificate type
 get_default_filename() {
     local cert_type="$1"
-    
+
     case "$cert_type" in
         pkcs12)     echo "certificate.pfx" ;;
         concatenated) echo "combined.pem" ;;
@@ -737,15 +751,15 @@ get_default_filename() {
 check_certificate_needs_generation() {
     local cert_path="$1"
     shift
-    
+
     # If certificate doesn't exist, it needs generation
     if [[ ! -f "$cert_path" ]]; then
         return 0
     fi
-    
+
     local cert_mtime
     cert_mtime=$(stat -c %Y "$cert_path" 2>/dev/null) || cert_mtime=0
-    
+
     # Check if any source file is newer than the certificate
     local source_file
     for source_file in "$@"; do
@@ -757,7 +771,7 @@ check_certificate_needs_generation() {
             fi
         fi
     done
-    
+
     return 1
 }
 
@@ -767,31 +781,31 @@ generate_pkcs12_certificate() {
     local filename="$1"
     local password="$2"
     local cert_path="$CERT_DIR/$filename"
-    
+
     # Check if certificate needs to be regenerated
     if ! check_certificate_needs_generation "$cert_path" "$CERT_DIR/privkey.pem" "$CERT_DIR/cert.pem" "$CERT_DIR/fullchain.pem"; then
         log "PKCS12 certificate up to date: $filename"
         return
     fi
-    
+
     log "Generating PKCS12 certificate: $filename"
-    
+
     if [[ "$DRY_RUN" == true ]]; then
         log "Would generate PKCS12 certificate: $cert_path"
         LOCAL_CERT_CHANGED=true
         return
     fi
-    
+
     # Build OpenSSL command
     local openssl_cmd="openssl pkcs12 -export -out '$cert_path' -inkey '$CERT_DIR/privkey.pem' -in '$CERT_DIR/cert.pem' -certfile '$CERT_DIR/fullchain.pem'"
-    
+
     # Add password if provided
     if [[ -n "$password" ]]; then
         openssl_cmd="$openssl_cmd -passout 'pass:$password'"
     else
         openssl_cmd="$openssl_cmd -passout 'pass:'"
     fi
-    
+
     # Execute command
     if eval "$openssl_cmd" 2>&1 | logger -t cert-spreader; then
         chmod "$FILE_PERMISSIONS" "$cert_path"
@@ -809,7 +823,7 @@ generate_concatenated_certificate() {
     local filename="$1"
     local dhparam_file="$2"
     local cert_path="$CERT_DIR/$filename"
-    
+
     # Check if certificate needs to be regenerated
     if [[ -n "$dhparam_file" && -f "$dhparam_file" ]]; then
         if ! check_certificate_needs_generation "$cert_path" "$CERT_DIR/privkey.pem" "$CERT_DIR/fullchain.pem" "$dhparam_file"; then
@@ -822,15 +836,15 @@ generate_concatenated_certificate() {
             return
         fi
     fi
-    
+
     log "Generating concatenated certificate: $filename"
-    
+
     if [[ "$DRY_RUN" == true ]]; then
         log "Would generate concatenated certificate: $cert_path"
         LOCAL_CERT_CHANGED=true
         return
     fi
-    
+
     # Create concatenated certificate
     if cat "$CERT_DIR/privkey.pem" "$CERT_DIR/fullchain.pem" > "$cert_path"; then
         # Add DH parameters if file exists
@@ -838,7 +852,7 @@ generate_concatenated_certificate() {
             cat "$dhparam_file" >> "$cert_path"
             log "Added DH parameters from: $dhparam_file"
         fi
-        
+
         chmod "$FILE_PERMISSIONS" "$cert_path"
         chown "$FILE_OWNER:$FILE_GROUP" "$cert_path"
         log "Generated concatenated certificate: $filename"
@@ -853,21 +867,21 @@ generate_concatenated_certificate() {
 generate_der_certificate() {
     local filename="$1"
     local cert_path="$CERT_DIR/$filename"
-    
+
     # Check if certificate needs to be regenerated
     if ! check_certificate_needs_generation "$cert_path" "$CERT_DIR/cert.pem"; then
         log "DER certificate up to date: $filename"
         return 0
     fi
-    
+
     log "Generating DER certificate: $filename"
-    
+
     if [[ "$DRY_RUN" == true ]]; then
         log "Would generate DER certificate: $cert_path"
         LOCAL_CERT_CHANGED=true
         return 0
     fi
-    
+
     # Convert PEM to DER format
     if openssl x509 -in "$CERT_DIR/cert.pem" -outform der -out "$cert_path"; then
         chmod "$FILE_PERMISSIONS" "$cert_path"
@@ -884,14 +898,14 @@ generate_der_certificate() {
 generate_pkcs7_certificate() {
     local filename="$1"
     local cert_path="$CERT_DIR/$filename"
-    
+
     log "Generating PKCS#7 certificate: $filename"
-    
+
     if [[ "$DRY_RUN" == true ]]; then
         log "Would generate PKCS#7 certificate: $cert_path"
         return 0
     fi
-    
+
     # Create PKCS#7 certificate bundle
     if openssl crl2pkcs7 -certfile "$CERT_DIR/fullchain.pem" -out "$cert_path" -nocrl; then
         chmod "$FILE_PERMISSIONS" "$cert_path"
@@ -908,14 +922,14 @@ generate_pkcs7_certificate() {
 generate_crt_certificate() {
     local filename="$1"
     local cert_path="$CERT_DIR/$filename"
-    
+
     log "Generating CRT certificate: $filename"
-    
+
     if [[ "$DRY_RUN" == true ]]; then
         log "Would generate CRT certificate: $cert_path"
         return 0
     fi
-    
+
     # Copy cert.pem to .crt file
     if cp "$CERT_DIR/cert.pem" "$cert_path"; then
         chmod "$FILE_PERMISSIONS" "$cert_path"
@@ -932,14 +946,14 @@ generate_crt_certificate() {
 generate_pem_certificate() {
     local filename="$1"
     local cert_path="$CERT_DIR/$filename"
-    
+
     log "Generating PEM certificate: $filename"
-    
+
     if [[ "$DRY_RUN" == true ]]; then
         log "Would generate PEM certificate: $cert_path"
         return 0
     fi
-    
+
     # Copy fullchain.pem to custom filename
     if cp "$CERT_DIR/fullchain.pem" "$cert_path"; then
         chmod "$FILE_PERMISSIONS" "$cert_path"
@@ -956,14 +970,14 @@ generate_pem_certificate() {
 generate_bundle_certificate() {
     local filename="$1"
     local cert_path="$CERT_DIR/$filename"
-    
+
     log "Generating CA bundle certificate: $filename"
-    
+
     if [[ "$DRY_RUN" == true ]]; then
         log "Would generate CA bundle certificate: $cert_path"
         return 0
     fi
-    
+
     # Copy chain.pem (CA bundle) to custom filename
     if [[ -f "$CERT_DIR/chain.pem" ]]; then
         if cp "$CERT_DIR/chain.pem" "$cert_path"; then
@@ -985,14 +999,14 @@ generate_jks_certificate() {
     local filename="$1"
     local password="$2"
     local cert_path="$CERT_DIR/$filename"
-    
+
     log "Generating JKS certificate: $filename"
-    
+
     if [[ "$DRY_RUN" == true ]]; then
         log "Would generate JKS certificate: $cert_path"
         return 0
     fi
-    
+
     # Check keytool availability first
     if ! check_keytool_available; then
         log "ERROR: JKS generation requires Java keytool (install Java JDK/JRE)"
@@ -1000,17 +1014,17 @@ generate_jks_certificate() {
         log "Conversion command: keytool -importkeystore -srckeystore ${filename%.jks}.pfx -srcstoretype PKCS12 -destkeystore $filename -deststoretype JKS"
         return 1
     fi
-    
+
     # Validate password requirement
     if [[ -z "$password" ]]; then
         log "ERROR: JKS certificates require a password. Use format: 'jks:password:$filename'"
         return 1
     fi
-    
+
     # Generate secure temporary PKCS#12 filename
     local temp_p12_name=".temp_$(date +%s)_$$.p12"
     local temp_p12_path="$CERT_DIR/$temp_p12_name"
-    
+
     # Cleanup function for error handling
     cleanup_temp_p12() {
         if [[ -f "$temp_p12_path" ]]; then
@@ -1018,13 +1032,13 @@ generate_jks_certificate() {
             log "Cleaned up intermediate file: $temp_p12_name"
         fi
     }
-    
+
     # Set trap for cleanup on exit/error
     trap cleanup_temp_p12 EXIT
-    
+
     # Step 1: Generate intermediate PKCS#12 file
     log "Creating intermediate PKCS#12 for JKS conversion"
-    
+
     if openssl pkcs12 -export \
         -out "$temp_p12_path" \
         -inkey "$CERT_DIR/privkey.pem" \
@@ -1032,7 +1046,7 @@ generate_jks_certificate() {
         -certfile "$CERT_DIR/fullchain.pem" \
         -name "certificate" \
         -passout "pass:$password" 2>/dev/null; then
-        
+
         log "Intermediate PKCS#12 created successfully"
     else
         log "ERROR: Failed to generate intermediate PKCS#12 for JKS conversion"
@@ -1040,10 +1054,10 @@ generate_jks_certificate() {
         trap - EXIT
         return 1
     fi
-    
+
     # Step 2: Convert PKCS#12 to JKS using keytool
     log "Converting PKCS#12 to JKS format"
-    
+
     if keytool -importkeystore \
         -srckeystore "$temp_p12_path" \
         -srcstoretype PKCS12 \
@@ -1054,14 +1068,14 @@ generate_jks_certificate() {
         -srcstorepass "$password" \
         -deststorepass "$password" \
         -noprompt 2>/dev/null; then
-        
+
         # Set proper permissions and ownership
         chmod "$FILE_PERMISSIONS" "$cert_path"
         chown "$FILE_OWNER:$FILE_GROUP" "$cert_path"
-        
+
         log "Generated JKS certificate: $filename"
         LOCAL_CERT_CHANGED=true
-        
+
         # Cleanup and remove trap
         cleanup_temp_p12
         trap - EXIT
@@ -1081,7 +1095,7 @@ check_permissions() {
     local path="$1"                         # Path to file or directory to check
     local expected_perms="$2"               # Expected permissions in octal (e.g., "644")
     local expected_owner="${3:-$FILE_OWNER:$FILE_GROUP}"  # Expected owner with configurable default
-    
+
     # CHECK PATH EXISTENCE:
     if [[ -f "$path" ]] || [[ -d "$path" ]]; then
         # Path exists as file or directory
@@ -1089,13 +1103,13 @@ check_permissions() {
     else
         return 1  # Return error if path doesn't exist or is neither file nor directory
     fi
-    
+
     # GET CURRENT PERMISSIONS AND OWNERSHIP:
     # stat -c "%a" outputs permissions in octal format (e.g., 644)
     # stat -c "%U:%G" outputs owner:group format
     local current_perms=$(stat -c "%a" "$path")
     local current_owner=$(stat -c "%U:%G" "$path")
-    
+
     # COMPOUND BOOLEAN CHECK:
     # Return true (0) if both permissions and ownership match expected values
     [[ "$current_perms" == "$expected_perms" && "$current_owner" == "$expected_owner" ]]
@@ -1109,16 +1123,16 @@ discover_and_secure_cert_files() {
     # Using associative array with configurable permissions
     declare -A cert_file_perms=(
         ["privkey.pem"]="$PRIVKEY_PERMISSIONS"     # Private key with configurable permissions
-        ["cert.pem"]="$FILE_PERMISSIONS"           # Certificate 
+        ["cert.pem"]="$FILE_PERMISSIONS"           # Certificate
         ["fullchain.pem"]="$FILE_PERMISSIONS"      # Full certificate chain
         ["chain.pem"]="$FILE_PERMISSIONS"          # Intermediate chain (optional)
     )
-    
+
     # Process each certificate file type
     for filename in "${!cert_file_perms[@]}"; do
         local filepath="$CERT_DIR/$filename"
         local expected_perms="${cert_file_perms[$filename]}"
-        
+
         # Only process files that actually exist
         if [[ -f "$filepath" ]]; then
             if ! check_permissions "$filepath" "$expected_perms" "$FILE_OWNER:$FILE_GROUP"; then
@@ -1135,24 +1149,24 @@ discover_and_secure_cert_files() {
             fi
         fi
     done
-    
+
     # Discover and secure any additional .pem files in the directory
     # This catches custom certificate files that might exist
     for pem_file in "$CERT_DIR"/*.pem; do
         # Check if glob found actual files (avoid processing literal *.pem)
         [[ -f "$pem_file" ]] || continue
-        
+
         local filename=$(basename "$pem_file")
-        
+
         # Skip files we already processed above
         [[ -n "${cert_file_perms[$filename]:-}" ]] && continue
-        
+
         # Default permissions for discovered .pem files
         local default_perms="$FILE_PERMISSIONS"
         if [[ "$filename" == *"key"* || "$filename" == *"private"* ]]; then
             default_perms="$PRIVKEY_PERMISSIONS"  # Use private key permissions for key files
         fi
-        
+
         if ! check_permissions "$pem_file" "$default_perms" "$FILE_OWNER:$FILE_GROUP"; then
             if [[ "$DRY_RUN" == true ]]; then
                 log "Would secure discovered file: $filename ($default_perms, $FILE_OWNER:$FILE_GROUP)"
@@ -1173,14 +1187,14 @@ discover_and_secure_cert_files() {
 # It demonstrates arrays of structured data, permission management, and security best practices
 secure_cert_permissions() {
     log "Checking and securing certificate directory permissions"
-    
+
     # TRACK CHANGES: Boolean flag to track if any changes were needed
     local changes_needed=false
-    
+
     if [[ "$DRY_RUN" == true ]]; then
         log "Checking permissions in dry-run mode..."
     fi
-    
+
     # SECURE CERTIFICATE DIRECTORY:
     # First, ensure the certificate directory itself has correct permissions
     if [[ -d "$CERT_DIR" ]]; then
@@ -1204,16 +1218,16 @@ secure_cert_permissions() {
         log "WARNING: Certificate directory does not exist: $CERT_DIR"
         return $ERR_CERT
     fi
-    
+
     # SECURE INDIVIDUAL CERTIFICATE FILES:
     # Use dynamic discovery to find certificate files and set appropriate permissions
     # This approach is more flexible than hardcoded arrays
     discover_and_secure_cert_files
-    
+
     # SECURE CUSTOM CERTIFICATES:
     # Handle custom certificates based on configuration
     secure_custom_certificates
-    
+
     # SUMMARY LOGGING:
     if [[ "$changes_needed" == false ]]; then
         log "All certificate permissions already correct"
@@ -1228,16 +1242,16 @@ secure_cert_permissions() {
 # This function secures custom certificate files based on configuration
 secure_custom_certificates() {
     local custom_files=()
-    
+
     # Collect filenames from individual settings
     if [[ "${PKCS12_ENABLED:-false}" == true ]]; then
         custom_files+=("${PKCS12_FILENAME:-certificate.pfx}")
     fi
-    
+
     if [[ "${CONCATENATED_ENABLED:-false}" == true ]]; then
         custom_files+=("${CONCATENATED_FILENAME:-combined.pem}")
     fi
-    
+
     # Collect filenames from custom certificate array
     if [[ ${#CUSTOM_CERTIFICATES[@]} -gt 0 ]]; then
         for cert_config in "${CUSTOM_CERTIFICATES[@]}"; do
@@ -1249,8 +1263,8 @@ secure_custom_certificates() {
             fi
         done
     fi
-    
-    
+
+
     # Secure each custom certificate file
     for filename in "${custom_files[@]}"; do
         local filepath="$CERT_DIR/$filename"
@@ -1280,15 +1294,15 @@ main() {
     # "$@" passes all command line arguments to the parse_args function
     # This preserves arguments exactly as they were passed to the script
     parse_args "$@"
-    
+
     # CONFIGURATION LOADING:
     # Load settings from configuration file
     load_config
-    
+
     # STARTUP LOGGING:
     log "=== Certificate Spreader Started ==="
     log "Mode: DRY_RUN=$DRY_RUN, CERT_ONLY=$CERT_ONLY, SERVICES_ONLY=$SERVICES_ONLY, PROXMOX_ONLY=$PROXMOX_ONLY, PERMISSIONS_FIX=$PERMISSIONS_FIX"
-    
+
     # SPECIAL MODE: PERMISSIONS-FIX ONLY
     # This mode only fixes permissions and exits (doesn't do certificate operations)
     if [[ "$PERMISSIONS_FIX" == true ]]; then
@@ -1297,7 +1311,7 @@ main() {
         log "=== Certificate Spreader Completed Successfully ==="
         return $ERR_SUCCESS  # Early exit - don't do anything else
     fi
-    
+
     # CERTIFICATE FILE VALIDATION:
     # Ensure required certificate files exist before proceeding
     # Skip this check in services-only mode since we won't be touching certificates
@@ -1311,17 +1325,17 @@ main() {
             fi
         done
     fi
-    
+
     # CERTIFICATE PROCESSING PHASE:
     # Generate service certificates, secure permissions, and deploy
     # Skip this entire phase in certain modes
     if [[ "$SERVICES_ONLY" != true && "$PROXMOX_ONLY" != true && "$PERMISSIONS_FIX" != true ]]; then
         # Generate certificates in formats needed by specific services
         generate_service_certificates
-        
+
         # Ensure all certificate files have proper security permissions
         secure_cert_permissions
-        
+
         # RELOAD/RESTART LOCAL SERVICE:
         # Only manage local service if certificates have changed and service is configured
         if [[ -n "$LOCAL_SERVICE" ]]; then
@@ -1345,18 +1359,18 @@ main() {
         else
             log "No local service configured, skipping local service management"
         fi
-        
-        
+
+
         # CERTIFICATE DEPLOYMENT TO REMOTE HOSTS:
         local failed_hosts=()  # Array to track deployment failures
-        
+
         # WORD SPLITTING: $HOSTS is split on whitespace into individual hostnames
         # This is intentional word splitting (usually we'd quote variables)
         for host in $HOSTS; do
             # DETERMINE SSH PORT FOR THIS HOST:
             # Check if this host has a custom SSH port defined in HOST_SERVICES
             local host_port=22  # Default SSH port
-            
+
             # SEARCH HOST_SERVICES ARRAY:
             for host_config in "${HOST_SERVICES[@]}"; do
                 IFS=':' read -r config_host config_port _config_services <<< "$host_config"
@@ -1365,7 +1379,7 @@ main() {
                     break  # Found the host, stop searching
                 fi
             done
-            
+
             # DEPLOY TO THIS HOST:
             # If deployment fails, add to failed_hosts array
             if ! deploy_to_host "$host" "$host_port"; then
@@ -1373,18 +1387,18 @@ main() {
                 failed_hosts+=("$host")
             fi
         done
-        
+
         # Set local cert changed flag if any hosts had certificates deployed
         if [[ ${#DEPLOYED_HOSTS[@]} -gt 0 ]]; then
             LOCAL_CERT_CHANGED=true
         fi
-        
+
         # ERROR HANDLING FOR FAILED DEPLOYMENTS:
         if [[ ${#failed_hosts[@]} -gt 0 ]]; then
             # ARRAY EXPANSION: ${array[*]} expands all elements as single word
             # (different from ${array[@]} which expands as separate words)
             log "ERROR: Failed to deploy to hosts: ${failed_hosts[*]}"
-            
+
             # Continue with remaining operations instead of exiting
             # Log the failures but don't stop the script from completing other tasks
             if [[ "$CERT_ONLY" != true ]]; then
@@ -1392,7 +1406,7 @@ main() {
             fi
         fi
     fi
-    
+
     # SERVICE MANAGEMENT PHASE:
     # Restart services and update Proxmox nodes
     # Skip this phase in cert-only mode
@@ -1401,13 +1415,13 @@ main() {
         if [[ "$PROXMOX_ONLY" != true ]]; then
             restart_services
         fi
-        
+
         # UPDATE PROXMOX NODES (unless services-only mode)
         if [[ "$SERVICES_ONLY" != true ]]; then
             update_proxmox
         fi
     fi
-    
+
     # SUCCESS LOGGING:
     log "=== Certificate Spreader Completed Successfully ==="
 }
